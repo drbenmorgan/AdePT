@@ -6,6 +6,13 @@ add_executable(example_add example_add.cu)
 
 # Noddy example of particle processing on CPU
 add_executable(fisher_price fisher_price.cpp)
+
+find_package(TBB QUIET)
+if(TBB_FOUND)
+  add_executable(tbbfisher_price_1 tbbfisher_price_1.cpp)
+  target_link_libraries(tbbfisher_price_1 PRIVATE TBB::tbb)
+endif()
+
 # Noddy example of particle processing with GPU
 add_executable(cufisher_price cufisher_price.cu)
 target_link_libraries(cufisher_price PRIVATE CUDA::curand)
