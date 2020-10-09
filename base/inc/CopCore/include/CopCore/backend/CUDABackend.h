@@ -10,7 +10,10 @@
 #include <cuda_runtime_api.h>
 
 #if defined(TARGET_DEVICE_CUDACLANG)
-inline const char* cudaGetErrorString(cudaError_t error) { return ""; }
+inline const char *cudaGetErrorString(cudaError_t error)
+{
+  return "";
+}
 #endif
 
 #endif
@@ -33,14 +36,14 @@ inline const char* cudaGetErrorString(cudaError_t error) { return ""; }
     }                                                  \
   }
 
-#define cudaCheckKernelCall(stmt)                                                                                  \
-  {                                                                                                                \
-    cudaError_t err = stmt;                                                                                        \
-    if (err != cudaSuccess) {                                                                                      \
-      fprintf(                                                                                                     \
-        stderr, "Failed to invoke kernel\n%s (%d) at %s: %d\n", cudaGetErrorString(err), err, __FILE__, __LINE__); \
-      throw std::invalid_argument("cudaCheckKernelCall failed");                                                   \
-    }                                                                                                              \
+#define cudaCheckKernelCall(stmt)                                                                             \
+  {                                                                                                           \
+    cudaError_t err = stmt;                                                                                   \
+    if (err != cudaSuccess) {                                                                                 \
+      fprintf(stderr, "Failed to invoke kernel\n%s (%d) at %s: %d\n", cudaGetErrorString(err), err, __FILE__, \
+              __LINE__);                                                                                      \
+      throw std::invalid_argument("cudaCheckKernelCall failed");                                              \
+    }                                                                                                         \
   }
 
 #endif

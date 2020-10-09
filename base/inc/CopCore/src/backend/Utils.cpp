@@ -19,26 +19,32 @@ void print_gpu_memory_consumption() {}
 std::tuple<bool, std::string> set_device(int, size_t)
 {
   // Assume a linux system and try to get the CPU type
-  FILE* cmd = popen("grep -m1 -hoE 'model name\\s+.*' /proc/cpuinfo | awk '{ print substr($0, index($0,$4)) }'", "r");
+  FILE *cmd = popen("grep -m1 -hoE 'model name\\s+.*' /proc/cpuinfo | awk '{ print substr($0, index($0,$4)) }'", "r");
   if (cmd == NULL) return {true, "CPU"};
 
   // Get a string that identifies the CPU
   const int fd = fileno(cmd);
-  __gnu_cxx::stdio_filebuf<char> filebuf {fd, std::ios::in};
-  std::istream cmd_ifstream {&filebuf};
-  std::string processor_name {(std::istreambuf_iterator<char>(cmd_ifstream)), (std::istreambuf_iterator<char>())};
+  __gnu_cxx::stdio_filebuf<char> filebuf{fd, std::ios::in};
+  std::istream cmd_ifstream{&filebuf};
+  std::string processor_name{(std::istreambuf_iterator<char>(cmd_ifstream)), (std::istreambuf_iterator<char>())};
 
   // Clean the string
-  const std::regex regex_to_remove {"(\\(R\\))|(CPU )|( @.*)|(\\(TM\\))|(\n)|( Processor)"};
-  processor_name = std::regex_replace(processor_name, regex_to_remove, std::string {});
+  const std::regex regex_to_remove{"(\\(R\\))|(CPU )|( @.*)|(\\(TM\\))|(\n)|( Processor)"};
+  processor_name = std::regex_replace(processor_name, regex_to_remove, std::string{});
 
   return {true, processor_name};
 }
 #else
-std::tuple<bool, std::string> set_device(int, size_t) { return {true, "CPU"}; }
+std::tuple<bool, std::string> set_device(int, size_t)
+{
+  return {true, "CPU"};
+}
 #endif // linux-dependent CPU detection
 
-std::tuple<bool, int> get_device_id(std::string) { return {true, 0}; }
+std::tuple<bool, int> get_device_id(std::string)
+{
+  return {true, 0};
+}
 
 #else
 
@@ -50,8 +56,8 @@ void print_gpu_memory_consumption()
   size_t free_byte;
   size_t total_byte;
   cudaCheck(cudaMemGetInfo(&free_byte, &total_byte));
-  float free_percent = (float) free_byte / total_byte * 100;
-  float used_percent = (float) (total_byte - free_byte) / total_byte * 100;
+  float free_percent = (float)free_byte / total_byte * 100;
+  float used_percent = (float)(total_byte - free_byte) / total_byte * 100;
   verbose_cout << "GPU memory: " << free_percent << " percent free, " << used_percent << " percent used " << std::endl;
 }
 
@@ -82,12 +88,11 @@ std::tuple<bool, std::string> set_device(int cuda_device, size_t stream_id)
     if (n_devices == 0) {
       error_cout << "Failed to select device " << cuda_device << "\n";
       return {false, ""};
-    }
-    else {
+    } else {
       debug_cout << "Stream " << stream_id << " selected cuda device " << cuda_device << ": " << device_properties.name
                  << "\n\n";
     }
-  } catch (const std::invalid_argument& e) {
+  } catch (const std::invalid_argument &e) {
     error_cout << e.what() << std::endl;
     error_cout << "Stream " << stream_id << " failed to select cuda device " << cuda_device << "\n";
     return {false, ""};
@@ -106,7 +111,7 @@ std::tuple<bool, int> get_device_id(std::string pci_bus_id)
   int device = 0;
   try {
     cudaCheck(cudaDeviceGetByPCIBusId(&device, pci_bus_id.c_str()));
-  } catch (std::invalid_argument& a) {
+  } catch (std::invalid_argument &a) {
     error_cout << "Failed to get device by PCI bus ID: " << pci_bus_id << "\n";
     return {false, 0};
   }

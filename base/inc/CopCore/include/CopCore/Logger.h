@@ -16,14 +16,14 @@
 #include "LoggerCommon.h"
 
 namespace logger {
-  class Logger {
-  public:
-    int verbosityLevel = 3;
-  };
+class Logger {
+public:
+  int verbosityLevel = 3;
+};
 
-  std::ostream& logger(int requestedLogLevel);
+std::ostream &logger(int requestedLogLevel);
 
-  int verbosity();
+int verbosity();
 
-  void setVerbosity(int level);
+void setVerbosity(int level);
 } // namespace logger
