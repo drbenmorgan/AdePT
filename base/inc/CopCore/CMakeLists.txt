@@ -39,6 +39,7 @@ add_library(CopCore STATIC
   include/CopCore/backend/HIPBackend.h
   include/CopCore/backend/Vector.h
   include/CopCore/CopCore.h
+  include/CopCore/Invoke.cuh
   include/CopCore/LoggerCommon.h
   include/CopCore/Logger.h
   include/CopCore/TupleTools.cuh
@@ -58,6 +59,11 @@ add_library(CopCore::CopCore ALIAS CopCore)
 # Install headers and target(s)
 install(DIRECTORY include/CopCore DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 install(TARGETS CopCore EXPORT CopCoreTargets)
+
+# Testing
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
 # Support files
 include(CMakePackageConfigHelpers)
