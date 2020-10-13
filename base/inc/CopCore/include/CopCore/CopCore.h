@@ -10,5 +10,6 @@
 #define COPCORE_COPCORE_H_
 
 #include "CopCore/VariableSizeObj.h"
+#include "CopCore/backend/BackendCommon.h"
 
 #endif // COPCORE_COPCORE_H_
