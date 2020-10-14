@@ -26,7 +26,7 @@
 #endif
 
 #if defined(DEVICE_COMPILER)
-namespace Allen {
+namespace copcore {
 namespace device {
 // Dispatcher targets
 namespace target {
@@ -85,11 +85,11 @@ __device__ constexpr auto dispatch(Fns &&... fns)
 #endif
 }
 } // namespace device
-} // namespace Allen
+} // namespace copcore
 #endif
 
 // Replacement for gsl::span in device code
-namespace Allen {
+namespace copcore {
 namespace device {
 template <class T>
 struct span {
@@ -102,7 +102,7 @@ struct span {
   __device__ __host__ const T &operator[](int i) const { return __ptr[i]; }
 };
 } // namespace device
-} // namespace Allen
+} // namespace copcore
 
 /**
  * @brief Macro to avoid warnings on Release builds with variables used by asserts.

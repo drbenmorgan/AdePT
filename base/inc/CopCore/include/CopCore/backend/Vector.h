@@ -38,7 +38,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace Allen {
+namespace copcore {
 namespace device {
 namespace vector_backend {
 constexpr static unsigned long scalar = 0;
@@ -335,7 +335,7 @@ void print_vector(VEC_T const &x, const std::string &name = "")
   std::cout << "]\n";
 }
 } // namespace device
-} // namespace Allen
+} // namespace copcore
 
 template <typename T, unsigned I>
 __device__ inline UME::SIMD::SIMDVec_f<T, I> signselect(const UME::SIMD::SIMDVec_f<T, I> &x,
