@@ -28,6 +28,7 @@ set_property(CACHE CUDA_ARCH PROPERTY STRINGS COMPATIBILITY MAX MIN 53 60 61 62 
 # Dependencies
 if(TARGET_DEVICE STREQUAL "CUDA")
   enable_language(CUDA)
+  find_package(CUDAToolkit 11.0 REQUIRED)
 endif()
 
 # Core library
@@ -52,6 +53,7 @@ target_compile_definitions(CopCore PUBLIC ${TARGET_DEFINITION})
 target_include_directories(CopCore PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+target_link_libraries(CopCore PUBLIC $<$<STREQUAL:"${TARGET_DEVICE}","CUDA">:CUDA::cudart_static>)
 
 # Alias to assist in use as a subproject
 add_library(CopCore::CopCore ALIAS CopCore)
