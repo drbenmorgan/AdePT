@@ -20,20 +20,15 @@
  * @return     Return value of the function.
  */
 #if defined(TARGET_DEVICE_CPU) || (defined(TARGET_DEVICE_HIP) && (defined(__HCC__) || defined(__HIP__))) || \
-  ((defined(TARGET_DEVICE_CUDA) && defined(__CUDACC__)) || (defined(TARGET_DEVICE_CUDACLANG) && defined(__CUDA__)))
-template<class Fn, class Tuple, unsigned long... I>
-void invoke_impl(
-  Fn&& function,
-  const dim3& grid_dim,
-  const dim3& block_dim,
-  cudaStream_t stream,
-  const Tuple& invoke_arguments,
-  std::index_sequence<I...>)
+    ((defined(TARGET_DEVICE_CUDA) && defined(__CUDACC__)) || (defined(TARGET_DEVICE_CUDACLANG) && defined(__CUDA__)))
+template <class Fn, class Tuple, unsigned long... I>
+void invoke_impl(Fn &&function, const dim3 &grid_dim, const dim3 &block_dim, cudaStream_t stream,
+                 const Tuple &invoke_arguments, std::index_sequence<I...>)
 {
   // If any grid dimension component, or any block dimension component is zero,
   // return without running.
-  if (
-    grid_dim.x == 0 || grid_dim.y == 0 || grid_dim.z == 0 || block_dim.x == 0 || block_dim.y == 0 || block_dim.z == 0) {
+  if (grid_dim.x == 0 || grid_dim.y == 0 || grid_dim.z == 0 || block_dim.x == 0 || block_dim.y == 0 ||
+      block_dim.z == 0) {
     return;
   }
 
@@ -56,8 +51,8 @@ void invoke_impl(
 #endif
 }
 #else
-template<class Fn, class Tuple, unsigned long... I>
-void invoke_impl(Fn&&, const dim3&, const dim3&, cudaStream_t, const Tuple&, std::index_sequence<I...>)
+template <class Fn, class Tuple, unsigned long... I>
+void invoke_impl(Fn &&, const dim3 &, const dim3 &, cudaStream_t, const Tuple &, std::index_sequence<I...>)
 {
   error_cout << "Global function invoked with unexpected backend.\n";
 }

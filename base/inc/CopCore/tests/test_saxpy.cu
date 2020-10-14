@@ -42,7 +42,7 @@ int main()
 
   // This is the awkward part - how to set the grid/block appriopriately
   // for CPU vs GPU.
-  invoke_impl(saxpy, dim3((N+255)/256), dim3(256), cudaStream_t{}, args, indices{});
+  invoke_impl(saxpy, dim3((N + 255) / 256), dim3(256), cudaStream_t{}, args, indices{});
 
   // Check
 
