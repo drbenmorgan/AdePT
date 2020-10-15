@@ -3,11 +3,17 @@
 #include <tuple>
 
 // Dumb saxpy kernel
-// But what invokes this, with blockIdx and so on set appropriately?
-__global__ void saxpy(int n, float a, float *x, float *y)
+__global__ void saxpy(float a, float *x, float *y, unsigned number_of_events)
 {
-  // In Allen, to make kernels reproducible on CPU/GPU must use blockDim strided loop:
-  for (unsigned i = threadIdx.x; i < n; i += blockDim.x) {
+  // A standard grid-stride loop works fine
+  // It reduces to the Allen "block-stride" for CPU only (blockIdx.x=0, blockDim.x=1)
+  // unsigned start = threadIdx.x;
+  // unsigned stride = blockDim.x;
+
+  unsigned start  = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned stride = blockDim.x * gridDim.x;
+
+  for (unsigned i = start; i < number_of_events; i += stride) {
     y[i] = a * x[i] + y[i];
   }
 }
@@ -36,15 +42,34 @@ int main()
   cudaMemcpy(d_y, y, N * sizeof(float), cudaMemcpyHostToDevice);
 
   // Invoke
-  auto args           = std::make_tuple(N, 2.0f, d_x, d_y);
+  // Allen's example saxpy hardcodes nBlocks(1), but as long as we use
+  // a grid-stride loop and 1d data, we can set to anything reasonable
+  // Allen's support for CPU/GPU commonality was implemented here:
+  // - https://gitlab.cern.ch/lhcb/Allen/-/merge_requests/196
+  // where it mentions use of a block-strided loop:
+  //
+  // for(unsigned i = threadIdx.x; i < N; i += blockDim.x)
+  //
+  // but this is use-case dependent and seems typically used for
+  // a pattern of one block per event (so eventID == blockIdx.x),
+  // (e.g.) one thread per track (the block-stride loop)
+  dim3 nBlocks(32);
+  dim3 nThreads(32);
+
+  auto args           = std::make_tuple(2.0f, d_x, d_y, N);
   constexpr auto size = std::tuple_size_v<decltype(args)>;
   using indices       = std::make_index_sequence<size>;
 
-  // This is the awkward part - how to set the grid/block appriopriately
-  // for CPU vs GPU.
-  invoke_impl(saxpy, dim3((N + 255) / 256), dim3(256), cudaStream_t{}, args, indices{});
+  invoke_impl(saxpy, nBlocks, nThreads, cudaStream_t{}, args, indices{});
 
   // Check
+  cudaMemcpy(y, d_y, N * sizeof(float), cudaMemcpyDeviceToHost);
+
+  float maxError = 0.0f;
+  for (int i = 0; i < N; i++) {
+    maxError = max(maxError, abs(y[i] - 4.0f));
+  }
+  printf("Max error: %f\n", maxError);
 
   // Tidy
   cudaFree(d_x);
