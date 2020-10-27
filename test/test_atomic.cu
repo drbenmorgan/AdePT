@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <cassert>
+#include <CopCore/CopCore.h>
 #include <AdePT/Atomic.h>
 
 // Example data structure containing several atomics
@@ -16,10 +17,10 @@ struct SomeStruct {
   adept::Atomic_t<int> var_int;
   adept::Atomic_t<float> var_float;
 
-  VECCORE_ATT_HOST_DEVICE
+  __host__ __device__
   SomeStruct() {}
 
-  VECCORE_ATT_HOST_DEVICE
+  __host__ __device__
   static SomeStruct *MakeInstanceAt(void *addr)
   {
     SomeStruct *obj = new (addr) SomeStruct();

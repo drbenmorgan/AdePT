@@ -12,7 +12,7 @@ include(CTest)
 # These can be set from the external project (Namespaced?)
 # ---------------------
 # Device target architecture
-set(TARGET_DEVICE CPU CACHE STRING "Target architecture of the device")
+set(TARGET_DEVICE CUDA CACHE STRING "Target architecture of the device")
 set_property(CACHE TARGET_DEVICE PROPERTY STRINGS CPU CUDA HIP CUDACLANG)
 set(TARGET_DEFINITION "TARGET_DEVICE_${TARGET_DEVICE}")
 
