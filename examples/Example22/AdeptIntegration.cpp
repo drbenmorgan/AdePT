@@ -102,6 +102,7 @@ void AdeptIntegration::Initialize(bool common_data)
 
   fInit = true;
 }
+
 void AdeptIntegration::InitBVH()
 {
   vecgeom::cxx::BVHManager::Init();
@@ -117,8 +118,6 @@ void AdeptIntegration::Cleanup()
 
 void AdeptIntegration::Shower(int event)
 {
-  constexpr double tolerance = 10. * vecgeom::kTolerance;
-
   int tid = G4Threading::G4GetThreadId();
   if (fDebugLevel > 0 && fBuffer.toDevice.size() == 0) {
     G4cout << "[" << tid << "] AdeptIntegration::Shower: No more particles in buffer. Exiting.\n";
@@ -132,73 +131,39 @@ void AdeptIntegration::Shower(int event)
     fBuffer.startTrack += fBuffer.toDevice.size();
   }
 
-  int itr   = 0;
-  int nelec = 0, nposi = 0, ngamma = 0;
-  if (fDebugLevel > 0) {
-    G4cout << "[" << tid << "] toDevice: " << fBuffer.nelectrons << " elec, " << fBuffer.npositrons << " posi, "
-           << fBuffer.ngammas << " gamma\n";
-  }
-  if (fDebugLevel > 1) {
-    for (auto &track : fBuffer.toDevice) {
-      G4cout << "[" << tid << "] toDevice[ " << itr++ << "]: pdg " << track.pdg << " energy " << track.energy
-             << " position " << track.position[0] << " " << track.position[1] << " " << track.position[2]
-             << " direction " << track.direction[0] << " " << track.direction[1] << " " << track.direction[2] << G4endl;
-    }
-  }
-
   AdeptIntegration::ShowerGPU(event, fBuffer);
 
-  if (fDebugLevel > 1) fScoring->Print();
-  for (auto const &track : fBuffer.fromDevice) {
-    if (track.pdg == 11)
-      nelec++;
-    else if (track.pdg == -11)
-      nposi++;
-    else if (track.pdg == 22)
-      ngamma++;
-  }
-  if (fDebugLevel > 0) {
-    G4cout << "[" << tid << "] fromDevice: " << nelec << " elec, " << nposi << " posi, " << ngamma << " gamma\n";
-  }
-
   // Build the secondaries and put them back on the Geant4 stack
-  int i = 0;
-  for (auto const &track : fBuffer.fromDevice) {
-    if (fDebugLevel > 1) {
-      G4cout << "[" << tid << "] fromDevice[ " << i++ << "]: pdg " << track.pdg << " energy " << track.energy
-             << " position " << track.position[0] << " " << track.position[1] << " " << track.position[2]
-             << " direction " << track.direction[0] << " " << track.direction[1] << " " << track.direction[2] << G4endl;
+  {
+    constexpr double tolerance = 10. * vecgeom::kTolerance;
+    for (auto const &track : fBuffer.fromDevice) {
+      G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
+
+      auto *dynamique =
+          new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
+
+      G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
+      // The returned track will be located by Geant4. For now we need to
+      // push it to make sure it is not relocated again in the GPU region
+      posi += tolerance * direction;
+
+      G4Track *secondary = new G4Track(dynamique, 0, posi);
+      secondary->SetParentID(-99);
+
+      G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
     }
-    G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
-
-    G4DynamicParticle *dynamique =
-        new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
-
-    G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
-    // The returned track will be located by Geant4. For now we need to
-    // push it to make sure it is not relocated again in the GPU region
-    posi += tolerance * direction;
-
-    G4Track *secondary = new G4Track(dynamique, 0, posi);
-    secondary->SetParentID(-99);
-
-    G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
   }
 
-  // Create energy deposit in the detector
-  auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
-  SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
+  // Create energy deposit in the detector - specific to this example
+  {
+    auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
+    SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
 
-  for (auto id = 0; id != fNumSensitive; id++) {
-    // here I add the energy deposition to the pre-existing Geant4 hit based on id
-    fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
+    for (auto id = 0; id != fNumSensitive; id++) {
+      // here I add the energy deposition to the pre-existing Geant4 hit based on id
+      fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
+    }
   }
-
-  EventAction *evAct      = dynamic_cast<EventAction *>(G4EventManager::GetEventManager()->GetUserEventAction());
-  evAct->number_gammas    = evAct->number_gammas + fScoring->fGlobalScoring.numGammas;
-  evAct->number_electrons = evAct->number_electrons + fScoring->fGlobalScoring.numElectrons;
-  evAct->number_positrons = evAct->number_positrons + fScoring->fGlobalScoring.numPositrons;
-  evAct->number_killed    = evAct->number_killed + fScoring->fGlobalScoring.numKilled;
 
   fBuffer.Clear();
   fScoring->ClearGPU();

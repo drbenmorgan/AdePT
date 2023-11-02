@@ -55,10 +55,6 @@ public:
   /// @brief Adds a track to the buffer
   void AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry, double dirz);
 
-  /// @brief Prepare the buffers for copying leaked tracks
-  /// @param numLeaked Number of tracks to be copied
-  void PrepareLeakedBuffers(int numLeaked);
-
   /// @brief Set track capacity on GPU
   static void SetTrackCapacity(size_t capacity) { kCapacity = capacity; }
 
@@ -102,6 +98,10 @@ private:
   void InitializeGPU();
   void ShowerGPU(int event, TrackBuffer &buffer); // const &buffer);
   void FreeGPU();
+
+  /// @brief Prepare the buffers for copying leaked tracks
+  /// @param numLeaked Number of tracks to be copied
+  void PrepareLeakedBuffers(int numLeaked);
 
 private:
   static constexpr int kMaxThreads = 256;

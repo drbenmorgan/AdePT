@@ -57,21 +57,7 @@ EventAction::~EventAction() {}
 
 void EventAction::BeginOfEventAction(const G4Event *)
 {
-  auto eventId         = G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID();
 
-  fTimer.Start();
-
-  #if defined TEST
-    //Get the Run object associated to this thread and start the timer for this event
-    Run* currentRun = static_cast< Run* > ( G4RunManager::GetRunManager()->GetNonConstCurrentRun() );
-    currentRun->GetTestManager()->timerStart(Run::timers::EVENT);
-  #endif
-
-  // zero the counters
-  number_electrons = 0;
-  number_positrons = 0;
-  number_gammas    = 0;
-  number_killed    = 0;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -109,14 +95,6 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
   G4double hitEn       = 0;
   G4double totalEnergy = 0;
   
-  // print number of secondaries std::setw(24) << std::fixed
-  if (fVerbosity > 0) {
-    G4cout << "EndOfEventAction " << eventId << ": electrons " << number_electrons << G4endl;
-    G4cout << "EndOfEventAction " << eventId << ": positrons " << number_positrons << G4endl;
-    G4cout << "EndOfEventAction " << eventId << ": gammas    " << number_gammas << G4endl;
-    G4cout << "EndOfEventAction " << eventId << ": killed    " << number_killed << G4endl;
-    G4cout << "EndOfEventAction " << eventId << ": real time " << fTimer.GetRealElapsed() << G4endl;
-  }
 
   // Store the original IO precission and width
   auto aOriginalPrecission = std::cout.precision();
@@ -161,46 +139,7 @@ void EventAction::EndOfEventAction(const G4Event *aEvent)
     G4cout << "EndOfEventAction " << eventId << "Total energy deposited: " << totalEnergy / MeV << " MeV" << G4endl;
   }
 
-  #if defined TEST
-    if(currentRun->GetDoValidation())
-    {
-      //Set an accumulator for each sensitive group, making sure the ID doesn't collide with the 
-      //defined timers
-      for (int igroup = 0; igroup < ngroups; ++igroup) {
-        G4cout << "EndOfEventAction " << eventId << " : group " << std::setw(5) << groups[igroup] << "  edep "
-                << std::setprecision(2) << std::setw(12) << std::fixed << edep_groups[igroup] / MeV << " [MeV]\n";
-      }
-      for (int igroup = 0; igroup < ngroups; ++igroup) {
-        aTestManager->setAccumulator(igroup+Run::accumulators::NUM_ACCUMULATORS, edep_groups[igroup]);
-      }
-
-      //Record the current contents of the TestManager in order to be able to extract per-event data
-      TestManagerStore<int>::GetInstance()->RecordState(aTestManager);
-    }
-    else if(currentRun->GetDoBenchmark())
-    {
-      //Get the timings
-      double eventTime = aTestManager->getDurationSeconds(Run::timers::EVENT);
-      double nonEMTime = aTestManager->getAccumulator(Run::accumulators::NONEM_EVT);
-      double ecalTime = eventTime - nonEMTime;
-
-      //Accumulate the results with the rest of events of this worker thread to provide global stats
-      aTestManager->addToAccumulator(Run::accumulators::EVENT_SUM, eventTime);
-      aTestManager->addToAccumulator(Run::accumulators::EVENT_SQ, eventTime*eventTime);
-      aTestManager->addToAccumulator(Run::accumulators::NONEM_SUM, nonEMTime);
-      aTestManager->addToAccumulator(Run::accumulators::NONEM_SQ, nonEMTime*nonEMTime);
-      aTestManager->addToAccumulator(Run::accumulators::ECAL_SUM, ecalTime);
-      aTestManager->addToAccumulator(Run::accumulators::ECAL_SQ, ecalTime*ecalTime);
-
-      //Record the current contents of the TestManager in order to be able to extract per-event data
-      TestManagerStore<int>::GetInstance()->RecordState(aTestManager);
-
-      //Reset the timers for the next event
-      aTestManager->removeTimer(Run::timers::EVENT);
-      aTestManager->removeAccumulator(Run::accumulators::NONEM_EVT);
-    }
-  #endif
-  
+ 
   delete[] edep_groups;
 
   // Restore the original IO precission
