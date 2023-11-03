@@ -33,20 +33,75 @@ AdeptIntegration::~AdeptIntegration()
 void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry,
                                 double dirz)
 {
-  fBuffer.toDevice.emplace_back(pdg, energy, x, y, z, dirx, diry, dirz);
-  if (pdg == 11)
-    fBuffer.nelectrons++;
-  else if (pdg == -11)
-    fBuffer.npositrons++;
-  else if (pdg == 22)
-    fBuffer.ngammas++;
+  // Should really be buffer that does this...
+  { 
+    fBuffer.toDevice.emplace_back(pdg, energy, x, y, z, dirx, diry, dirz);
+    if (pdg == 11)
+      fBuffer.nelectrons++;
+    else if (pdg == -11)
+      fBuffer.npositrons++;
+    else if (pdg == 22)
+      fBuffer.ngammas++;
+  }
 
   if (fBuffer.toDevice.size() >= fBufferThreshold) {
-    if (fDebugLevel > 0)
-      G4cout << "Reached the threshold of " << fBufferThreshold << " triggering the shower" << G4endl;
     this->Shower(G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
   }
 }
+
+void AdeptIntegration::Shower(int event)
+{
+  int tid = G4Threading::G4GetThreadId();
+  if (fDebugLevel > 0 && fBuffer.toDevice.size() == 0) {
+    G4cout << "[" << tid << "] AdeptIntegration::Shower: No more particles in buffer. Exiting.\n";
+    return;
+  }
+
+  if (event != fBuffer.eventId) {
+    fBuffer.eventId    = event;
+    fBuffer.startTrack = 0;
+  } else {
+    fBuffer.startTrack += fBuffer.toDevice.size();
+  }
+
+  AdeptIntegration::ShowerGPU(event, fBuffer);
+
+  // Onload particles from AdePT back to Geant4 (e.g. leakage)
+  {
+    constexpr double tolerance = 10. * vecgeom::kTolerance;
+    for (auto const &track : fBuffer.fromDevice) {
+      G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
+
+      auto *dynamique =
+          new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
+
+      G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
+      // The returned track will be located by Geant4. For now we need to
+      // push it to make sure it is not relocated again in the GPU region
+      posi += tolerance * direction;
+
+      G4Track *secondary = new G4Track(dynamique, 0, posi);
+      secondary->SetParentID(-99);
+
+      G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
+    }
+  }
+
+  // Copy device-side "hits" to host equivalents
+  {
+    auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
+    SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
+
+    for (auto id = 0; id != fNumSensitive; id++) {
+      // here I add the energy deposition to the pre-existing Geant4 hit based on id
+      fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
+    }
+    fScoring->ClearGPU();
+  }
+
+  fBuffer.Clear();
+}
+
 
 void AdeptIntegration::Initialize(bool common_data)
 {
@@ -114,59 +169,6 @@ void AdeptIntegration::Cleanup()
   if (!fInit) return;
   AdeptIntegration::FreeGPU();
   delete[] fBuffer.fromDeviceBuff;
-}
-
-void AdeptIntegration::Shower(int event)
-{
-  int tid = G4Threading::G4GetThreadId();
-  if (fDebugLevel > 0 && fBuffer.toDevice.size() == 0) {
-    G4cout << "[" << tid << "] AdeptIntegration::Shower: No more particles in buffer. Exiting.\n";
-    return;
-  }
-
-  if (event != fBuffer.eventId) {
-    fBuffer.eventId    = event;
-    fBuffer.startTrack = 0;
-  } else {
-    fBuffer.startTrack += fBuffer.toDevice.size();
-  }
-
-  AdeptIntegration::ShowerGPU(event, fBuffer);
-
-  // Build the secondaries and put them back on the Geant4 stack
-  {
-    constexpr double tolerance = 10. * vecgeom::kTolerance;
-    for (auto const &track : fBuffer.fromDevice) {
-      G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
-
-      auto *dynamique =
-          new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
-
-      G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
-      // The returned track will be located by Geant4. For now we need to
-      // push it to make sure it is not relocated again in the GPU region
-      posi += tolerance * direction;
-
-      G4Track *secondary = new G4Track(dynamique, 0, posi);
-      secondary->SetParentID(-99);
-
-      G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
-    }
-  }
-
-  // Create energy deposit in the detector - specific to this example
-  {
-    auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
-    SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
-
-    for (auto id = 0; id != fNumSensitive; id++) {
-      // here I add the energy deposition to the pre-existing Geant4 hit based on id
-      fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
-    }
-  }
-
-  fBuffer.Clear();
-  fScoring->ClearGPU();
 }
 
 adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume *g4world,

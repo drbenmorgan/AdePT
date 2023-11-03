@@ -30,7 +30,6 @@
 
 #include <unordered_map>
 #include "G4VFastSimulationModel.hh"
-// #include <AdePT/ArgParser.h>
 #include <CopCore/SystemOfUnits.h>
 #include "AdeptIntegration.h"
 
@@ -39,7 +38,6 @@
 #include <G4HepEmState.hh>
 #include <G4HepEmStateInit.hh>
 
-class EMShowerMessenger;
 class G4FastSimHitMaker;
 class G4VPhysicalVolume;
 
@@ -70,9 +68,6 @@ public:
 
   void Flush() final override;
 
-  /// Print current settings.
-  void Print() const;
-
   /// Set verbosity for integration
   void SetVerbosity(int verbosity) { fVerbosity = verbosity; }
 
@@ -91,9 +86,6 @@ public:
   void SetTrackSlots(double value) { fTrackSlotsGPU = value; }
 
 private:
-  /// Messenger for configuration
-  EMShowerMessenger *fMessenger;
-
   /// Region where it applies
   G4Region *fRegion{nullptr};
 
@@ -106,9 +98,7 @@ private:
   /// AdePT buffer threshold
   int fBufferThreshold{20};
 
-  G4double ProductionCut = 0.7 * copcore::units::mm;
 
-  int MCIndex[100];
   double fTrackSlotsGPU{1}; ///< Total number of track slots allocated on GPU (in millions)
   std::unordered_map<std::string, int> *sensitive_volume_index;
   std::unordered_map<const G4VPhysicalVolume *, int> *fScoringMap;

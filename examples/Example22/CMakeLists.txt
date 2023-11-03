@@ -24,7 +24,6 @@ set(sources_g4
   src/ActionInitialisation.cc
   src/DetectorConstruction.cc
   src/DetectorMessenger.cc
-  src/EMShowerMessenger.cc
   src/EMShowerModel.cc
   src/EventAction.cc
   src/EventActionMessenger.cc
