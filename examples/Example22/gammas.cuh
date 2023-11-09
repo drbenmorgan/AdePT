@@ -42,7 +42,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
     adeptint::TrackData trackdata;
     // the MCC vector is indexed by the logical volume id
     int lvolID                = volume->GetLogicalVolume()->id();
-    //VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
     VolAuxData const &auxData = volAuxData[lvolID];
     assert(auxData.fGPUregion > 0); // make sure we don't get inconsistent region here
 
@@ -87,7 +86,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
     double geometryStepLength =
         BVHNavigator::ComputeStepAndNextVolume(pos, dir, geometricalStepLengthFromPhysics, navState, nextState, kPush);
     pos += geometryStepLength * dir;
-    //userScoring->AccountChargedStep(0);
 
     // Set boundary state in navState so the next step and secondaries get the
     // correct information (navState = nextState only if relocated
@@ -107,9 +105,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
     }
 
     if (nextState.IsOnBoundary()) {
-      // For now, just count that we hit something.
-      //userScoring->AccountHit();
-
       // Kill the particle if it left the world.
       if (nextState.Top() != nullptr) {
         BVHNavigator::RelocateToNextVolume(pos, dir, nextState);
@@ -168,8 +163,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
       Track &electron = secondaries.electrons->NextTrack();
       Track &positron = secondaries.positrons->NextTrack();
 
-      //userScoring->AccountProduced(/*numElectrons*/ 1, /*numPositrons*/ 1, /*numGammas*/ 0);
-
       electron.InitAsSecondary(pos, navState);
       electron.rngState = newRNG;
       electron.energy   = elKinEnergy;
@@ -201,8 +194,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
       if (energyEl > LowEnergyThreshold) {
         // Create a secondary electron and sample/compute directions.
         Track &electron = secondaries.electrons->NextTrack();
-        //userScoring->AccountProduced(/*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
-
         electron.InitAsSecondary(pos, navState);
         electron.rngState = newRNG;
         electron.energy   = energyEl;
@@ -241,7 +232,6 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
       if (photoElecE > theLowEnergyThreshold) {
         // Create a secondary electron and sample directions.
         Track &electron = secondaries.electrons->NextTrack();
-        //userScoring->AccountProduced(/*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
 
         double dirGamma[] = {dir.x(), dir.y(), dir.z()};
         double dirPhotoElec[3];

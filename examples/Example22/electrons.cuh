@@ -56,7 +56,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     adeptint::TrackData trackdata;
     // the MCC vector is indexed by the logical volume id
     const int lvolID          = volume->GetLogicalVolume()->id();
-    //VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
     VolAuxData const &auxData = volAuxData[lvolID];
     assert(auxData.fGPUregion > 0); // make sure we don't get inconsistent region here
 
@@ -210,8 +209,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
         Track &gamma1 = secondaries.gammas->NextTrack();
         Track &gamma2 = secondaries.gammas->NextTrack();
 
-        //userScoring->AccountProduced(/*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 2);
-
         const double cost = 2 * currentTrack.Uniform() - 1;
         const double sint = sqrt(1 - cost * cost);
         const double phi  = k2Pi * currentTrack.Uniform();
@@ -235,9 +232,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     }
 
     if (nextState.IsOnBoundary()) {
-      // For now, just count that we hit something.
-      //userScoring->AccountHit();
-
       // Kill the particle if it left the world.
       if (nextState.Top() != nullptr) {
         BVHNavigator::RelocateToNextVolume(pos, dir, nextState);
@@ -247,7 +241,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
         // Check if the next volume belongs to the GPU region and push it to the appropriate queue
         const auto nextvolume         = navState.Top();
         const int nextlvolID          = nextvolume->GetLogicalVolume()->id();
-        //VolAuxData const &nextauxData = userScoring->GetAuxData_dev(nextlvolID);
         VolAuxData const &nextauxData = volAuxData[nextlvolID];
         if (nextauxData.fGPUregion > 0)
           survive();
@@ -301,9 +294,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       G4HepEmElectronInteractionIoni::SampleDirections(energy, deltaEkin, dirSecondary, dirPrimary, &rnge);
 
       Track &secondary = secondaries.electrons->NextTrack();
-
-      //userScoring->AccountProduced(/*numElectrons*/ 1, /*numPositrons*/ 0, /*numGammas*/ 0);
-
       secondary.InitAsSecondary(pos, navState);
       secondary.rngState = newRNG;
       secondary.energy   = deltaEkin;
@@ -328,8 +318,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
       G4HepEmElectronInteractionBrem::SampleDirections(energy, deltaEkin, dirSecondary, dirPrimary, &rnge);
 
       Track &gamma = secondaries.gammas->NextTrack();
-      //userScoring->AccountProduced(/*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 1);
-
       gamma.InitAsSecondary(pos, navState);
       gamma.rngState = newRNG;
       gamma.energy   = deltaEkin;
@@ -350,7 +338,6 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
 
       Track &gamma1 = secondaries.gammas->NextTrack();
       Track &gamma2 = secondaries.gammas->NextTrack();
-      //userScoring->AccountProduced(/*numElectrons*/ 0, /*numPositrons*/ 0, /*numGammas*/ 2);
 
       gamma1.InitAsSecondary(pos, navState);
       gamma1.rngState = newRNG;
