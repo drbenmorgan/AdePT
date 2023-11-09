@@ -27,7 +27,7 @@
 
 AdeptIntegration::~AdeptIntegration()
 {
-  delete fScoring;
+  //delete fScoring;
 }
 
 void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry,
@@ -149,10 +149,6 @@ void AdeptIntegration::Initialize(bool common_data)
 
   G4cout << "=== AdeptIntegration: initializing transport engine for thread: " << G4Threading::G4GetThreadId()
          << G4endl;
-
-  // Initialize user scoring data
-  fScoring     = new AdeptScoring();
-  fScoring_dev = fScoring->InitializeOnGPU();
 
   // Initialize the transport engine for the current thread
   InitializeGPU();

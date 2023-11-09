@@ -38,6 +38,7 @@
 
 #include "G4GlobalFastSimulationManager.hh"
 #include "AdeptIntegration.h"
+#include <VecGeom/management/GeoManager.h>
 
 #include "TestManager.h"
 #include "TestManagerStore.h"

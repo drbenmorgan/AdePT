@@ -19,7 +19,6 @@
 
 // For the moment the scoring type will be determined by what we include here
 #include "CommonStruct.h"
-#include "BasicScoring.h"
 #include "G4FastSimHitMaker.hh"
 
 class G4Region;
@@ -89,7 +88,6 @@ private:
   VolAuxData *CreateVolAuxData(const G4VPhysicalVolume *g4world, const vecgeom::VPlacedVolume *world,
                                const G4HepEmState &hepEmState);
   void InitBVH();
-  void InitializeUserData() { fScoring->InitializeOnGPU(); }
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
   bool InitializePhysics();
   void InitializeGPU();
@@ -113,8 +111,6 @@ private:
   int fBufferThreshold{20};            ///< Buffer threshold for flushing AdePT transport buffer
   int fDebugLevel{1};                  ///< Debug level
   GPUstate *fGPUstate{nullptr};        ///< CUDA state placeholder
-  AdeptScoring *fScoring{nullptr};     ///< User scoring object
-  AdeptScoring *fScoring_dev{nullptr}; ///< Device ptr for scoring data
   static G4HepEmState *fg4hepem_state; ///< The HepEm state singleton
   TrackBuffer fBuffer;                 ///< Vector of buffers of tracks to/from device (per thread)
   G4Region *fRegion{nullptr};          ///< Region to which applies

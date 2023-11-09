@@ -28,10 +28,9 @@
 // Compute the physics and geometry step limit, transport the electrons while
 // applying the continuous effects and maybe a discrete process that could
 // generate secondaries.
-template <bool IsElectron, typename Scoring>
+template <bool IsElectron>
 static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Track> *electrons,
-                                                          Secondaries &secondaries, MParrayTracks *leakedQueue,
-                                                          Scoring *userScoring)
+                                                          Secondaries &secondaries, MParrayTracks *leakedQueue, adeptint::VolAuxData *volAuxData)
 {
   using VolAuxData = AdeptIntegration::VolAuxData;
 #ifdef VECGEOM_FLOAT_PRECISION
@@ -57,7 +56,8 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
     adeptint::TrackData trackdata;
     // the MCC vector is indexed by the logical volume id
     const int lvolID          = volume->GetLogicalVolume()->id();
-    VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
+    //VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
+    VolAuxData const &auxData = volAuxData[lvolID];
     assert(auxData.fGPUregion > 0); // make sure we don't get inconsistent region here
 
     auto survive = [&](bool leak = false) {
@@ -247,7 +247,8 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
         // Check if the next volume belongs to the GPU region and push it to the appropriate queue
         const auto nextvolume         = navState.Top();
         const int nextlvolID          = nextvolume->GetLogicalVolume()->id();
-        VolAuxData const &nextauxData = userScoring->GetAuxData_dev(nextlvolID);
+        //VolAuxData const &nextauxData = userScoring->GetAuxData_dev(nextlvolID);
+        VolAuxData const &nextauxData = volAuxData[nextlvolID];
         if (nextauxData.fGPUregion > 0)
           survive();
         else {
@@ -370,15 +371,14 @@ static __device__ __forceinline__ void TransportElectrons(adept::TrackManager<Tr
 }
 
 // Instantiate kernels for electrons and positrons.
-template <typename Scoring>
 __global__ void TransportElectrons(adept::TrackManager<Track> *electrons, Secondaries secondaries,
-                                   MParrayTracks *leakedQueue, Scoring *userScoring)
+                                   MParrayTracks *leakedQueue, adeptint::VolAuxData* volAuxData)
 {
-  TransportElectrons</*IsElectron*/ true, Scoring>(electrons, secondaries, leakedQueue, userScoring);
+  TransportElectrons</*IsElectron*/ true>(electrons, secondaries, leakedQueue, volAuxData);
 }
-template <typename Scoring>
+
 __global__ void TransportPositrons(adept::TrackManager<Track> *positrons, Secondaries secondaries,
-                                   MParrayTracks *leakedQueue, Scoring *userScoring)
+                                   MParrayTracks *leakedQueue, adeptint::VolAuxData* volAuxData)
 {
-  TransportElectrons</*IsElectron*/ false, Scoring>(positrons, secondaries, leakedQueue, userScoring);
+  TransportElectrons</*IsElectron*/ false>(positrons, secondaries, leakedQueue, volAuxData);
 }

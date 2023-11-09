@@ -19,9 +19,8 @@
 #include <G4HepEmGammaInteractionConversion.icc>
 #include <G4HepEmGammaInteractionPhotoelectric.icc>
 
-template <typename Scoring>
 __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries secondaries,
-                                MParrayTracks *leakedQueue, Scoring *userScoring)
+                                MParrayTracks *leakedQueue, adeptint::VolAuxData* volAuxData)
 {
   using VolAuxData = AdeptIntegration::VolAuxData;
 #ifdef VECGEOM_FLOAT_PRECISION
@@ -43,7 +42,8 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
     adeptint::TrackData trackdata;
     // the MCC vector is indexed by the logical volume id
     int lvolID                = volume->GetLogicalVolume()->id();
-    VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
+    //VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
+    VolAuxData const &auxData = volAuxData[lvolID];
     assert(auxData.fGPUregion > 0); // make sure we don't get inconsistent region here
 
     auto survive = [&](bool leak = false) {
@@ -119,7 +119,9 @@ __global__ void TransportGammas(adept::TrackManager<Track> *gammas, Secondaries 
         // Check if the next volume belongs to the GPU region and push it to the appropriate queue
         const auto nextvolume         = navState.Top();
         const int nextlvolID          = nextvolume->GetLogicalVolume()->id();
-        VolAuxData const &nextauxData = userScoring->GetAuxData_dev(nextlvolID);
+        //VolAuxData const &nextauxData = userScoring->GetAuxData_dev(nextlvolID);
+        VolAuxData const &nextauxData = volAuxData[nextlvolID];
+
         if (nextauxData.fGPUregion > 0)
           survive();
         else {
