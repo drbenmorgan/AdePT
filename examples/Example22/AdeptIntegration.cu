@@ -217,20 +217,19 @@ bool AdeptIntegration::InitializePhysics()
   return true;
 }
 
-void AdeptIntegration::PrepareLeakedBuffers(int numLeaked)
+void AdeptIntegration::PrepareLeakedBuffers(int numLeaked, GPUstate& devState, TrackBuffer& hostBuffer)
 {
   // Make sure the size of the allocated track array is large enough
   using TrackData    = adeptint::TrackData;
-  GPUstate &gpuState = *static_cast<GPUstate *>(fGPUstate);
-  if (fBuffer.buffSize < numLeaked) {
-    if (fBuffer.buffSize) {
-      delete[] fBuffer.fromDeviceBuff;
-      COPCORE_CUDA_CHECK(cudaFree(gpuState.fromDevice_dev));
+  if (hostBuffer.buffSize < numLeaked) {
+    if (hostBuffer.buffSize) {
+      delete[] hostBuffer.fromDeviceBuff;
+      COPCORE_CUDA_CHECK(cudaFree(devState.fromDevice_dev));
     }
-    fBuffer.buffSize = numLeaked;
-    fBuffer.fromDevice.reserve(numLeaked);
-    fBuffer.fromDeviceBuff = new TrackData[numLeaked];
-    COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.fromDevice_dev, numLeaked * sizeof(TrackData)));
+    hostBuffer.buffSize = numLeaked;
+    hostBuffer.fromDevice.reserve(numLeaked);
+    hostBuffer.fromDeviceBuff = new TrackData[numLeaked];
+    COPCORE_CUDA_CHECK(cudaMalloc(&devState.fromDevice_dev, numLeaked * sizeof(TrackData)));
   }
 }
 
@@ -264,7 +263,7 @@ void AdeptIntegration::InitializeGPU()
 
   // initialize buffers of tracks on device
   COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.toDevice_dev, fMaxBatch * sizeof(TrackData)));
-  PrepareLeakedBuffers(1000);
+  PrepareLeakedBuffers(1000, gpuState, fBuffer);
 }
 
 void AdeptIntegration::FreeGPU()
@@ -292,13 +291,12 @@ void AdeptIntegration::FreeGPU()
   AdeptIntegration::fg4hepem_state = nullptr;
 }
 
-void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffer)
+void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate& gpuState) // const &buffer)
 {
   using TrackData = adeptint::TrackData;
   // Capacity of the different containers aka the maximum number of particles.
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
-  GPUstate &gpuState                            = *static_cast<GPUstate *>(fGPUstate);
 
   Secondaries secondaries{gpuState.allmgr_d.trackmgr[0], gpuState.allmgr_d.trackmgr[1], gpuState.allmgr_d.trackmgr[2]};
 
@@ -423,22 +421,22 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
   // Transfer the leaked tracks from GPU
   if (numLeaked) {
     auto copyLeakedTracksFromGPU = [&](int numLeaked) {
-      PrepareLeakedBuffers(numLeaked);
+      PrepareLeakedBuffers(numLeaked, gpuState, buffer);
       // Populate the buffer from sparse memory
       constexpr unsigned int block_size = 256;
       unsigned int grid_size            = (numLeaked + block_size - 1) / block_size;
       FillFromDeviceBuffer<<<grid_size, block_size, 0, gpuState.stream>>>(numLeaked, leakedTracks,
                                                                           gpuState.fromDevice_dev);
       // Copy the buffer from device to host
-      COPCORE_CUDA_CHECK(cudaMemcpyAsync(fBuffer.fromDeviceBuff, gpuState.fromDevice_dev, numLeaked * sizeof(TrackData),
+      COPCORE_CUDA_CHECK(cudaMemcpyAsync(buffer.fromDeviceBuff, gpuState.fromDevice_dev, numLeaked * sizeof(TrackData),
                                          cudaMemcpyDeviceToHost, gpuState.stream));
       COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
-      fBuffer.fromDevice.insert(fBuffer.fromDevice.end(), &fBuffer.fromDeviceBuff[0],
-                                &fBuffer.fromDeviceBuff[numLeaked]);
+      buffer.fromDevice.insert(buffer.fromDevice.end(), &buffer.fromDeviceBuff[0],
+                                &buffer.fromDeviceBuff[numLeaked]);
     };
     copyLeakedTracksFromGPU(numLeaked);
     // Sort by energy the tracks coming from device to ensure reproducibility
-    std::sort(fBuffer.fromDevice.begin(), fBuffer.fromDevice.end());
+    std::sort(buffer.fromDevice.begin(), buffer.fromDevice.end());
   }
 
   if (inFlight > 0) {

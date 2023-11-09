@@ -50,7 +50,7 @@ void AdeptIntegration::Shower(int event)
 
   fBuffer.UpdateEventID(event);
 
-  AdeptIntegration::ShowerGPU(event, fBuffer);
+  AdeptIntegration::ShowerGPU(event, fBuffer, *fGPUstate);
 
   // Onload particles from AdePT back to Geant4 (e.g. leakage)
   {

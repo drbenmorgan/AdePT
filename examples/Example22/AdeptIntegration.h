@@ -88,12 +88,13 @@ private:
   bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
   bool InitializePhysics();
   void InitializeGPU();
-  void ShowerGPU(int event, TrackBuffer &buffer); // const &buffer);
   void FreeGPU();
 
   /// @brief Prepare the buffers for copying leaked tracks
   /// @param numLeaked Number of tracks to be copied
-  void PrepareLeakedBuffers(int numLeaked);
+  static void PrepareLeakedBuffers(int numLeaked, GPUstate& devState, TrackBuffer& hostBuffer);
+  
+  static void ShowerGPU(int event, TrackBuffer &buffer, GPUstate& state); // const &buffer);
 
 private:
   static constexpr int kMaxThreads = 256;
