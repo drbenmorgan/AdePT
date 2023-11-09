@@ -78,10 +78,6 @@ public:
 
   void Initialize(bool adept = true);
 
-  void SetSensitiveVolumes(std::unordered_map<std::string, int> *sv) { sensitive_volume_index = sv; }
-
-  void SetScoringMap(std::unordered_map<const G4VPhysicalVolume *, int> *sm) { fScoringMap = sm; }
-
   // Set total number of track slots on GPU
   void SetTrackSlots(double value) { fTrackSlotsGPU = value; }
 
@@ -100,7 +96,5 @@ private:
 
 
   double fTrackSlotsGPU{1}; ///< Total number of track slots allocated on GPU (in millions)
-  std::unordered_map<std::string, int> *sensitive_volume_index;
-  std::unordered_map<const G4VPhysicalVolume *, int> *fScoringMap;
 };
 #endif /* EMSHOWERMODEL_HH */

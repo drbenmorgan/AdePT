@@ -173,7 +173,7 @@ __global__ void FinishIteration(AllTrackManagers all, Stats *stats)
 {
   for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
     all.trackmgr[i]->refresh_stats();
-    stats->mgr_stats[i] = all.trackmgr[i]->fStats;
+    stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
     stats->leakedTracks[i] = all.leakedTracks[i]->size();
   }
 }
@@ -310,11 +310,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
                                      buffer.toDevice.size() * sizeof(adeptint::TrackData), cudaMemcpyHostToDevice,
                                      gpuState.stream));
 
-  if (fDebugLevel > 0) {
-    G4cout << std::dec << G4endl << "GPU transporting event " << event << " for CPU thread "
-           << G4Threading::G4GetThreadId() << ": " << std::flush;
-  }
-
   // Initialize AdePT tracks using the track buffer copied from CPU
   constexpr int initThreads = 32;
   int initBlocks            = (buffer.toDevice.size() + initThreads - 1) / initThreads;
@@ -324,9 +319,12 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
 
   COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
-  gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
-  gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
-  gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
+  // Diagnostics
+  {
+    gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
+    gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
+    gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
+  }
 
   constexpr float compactThreshold = 0.9;
   constexpr int MaxBlocks          = 1024;
@@ -340,11 +338,10 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
   int loopingNo         = 0;
   int previousElectrons = -1, previousPositrons = -1;
   LeakedTracks leakedTracks = {.leakedElectrons = electrons.leakedTracks,
-                            .leakedPositrons = positrons.leakedTracks,
-                            .leakedGammas    = gammas.leakedTracks};
+                               .leakedPositrons = positrons.leakedTracks,
+                               .leakedGammas    = gammas.leakedTracks};
 
-  auto copyLeakedTracksFromGPU = [&](int numLeaked)
-  {
+  auto copyLeakedTracksFromGPU = [&](int numLeaked) {
     PrepareLeakedBuffers(numLeaked);
     // Populate the buffer from sparse memory
     constexpr unsigned int block_size = 256;
@@ -353,12 +350,11 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
                                                                         gpuState.fromDevice_dev);
     // Copy the buffer from device to host
     COPCORE_CUDA_CHECK(cudaMemcpyAsync(fBuffer.fromDeviceBuff, gpuState.fromDevice_dev, numLeaked * sizeof(TrackData),
-                                        cudaMemcpyDeviceToHost, gpuState.stream));
+                                       cudaMemcpyDeviceToHost, gpuState.stream));
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
     fBuffer.fromDevice.insert(fBuffer.fromDevice.end(), &fBuffer.fromDeviceBuff[0], &fBuffer.fromDeviceBuff[numLeaked]);
   };
-  
-  int niter = 0;
+
   do {
 
     // *** ELECTRONS ***
@@ -428,9 +424,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
     numElectrons = gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight;
     numPositrons = gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight;
     numGammas    = gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight;
-    if (fDebugLevel > 1) {
-      printf("iter %d: elec %d, pos %d, gam %d, leak %d\n", niter++, numElectrons, numPositrons, numGammas, numLeaked);
-    }
     if (numElectrons == previousElectrons && numPositrons == previousPositrons && numGammas == 0) {
       loopingNo++;
     } else {
@@ -440,10 +433,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
     }
 
   } while (inFlight > 0 && loopingNo < 200);
-
-  if (fDebugLevel > 0) {
-    G4cout << inFlight << " in flight, " << numLeaked << " leaked, " << num_compact << " compacted\n";
-  }
 
   // Transfer the leaked tracks from GPU
   if (numLeaked) {
@@ -469,6 +458,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer) // const &buffe
   COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
   // Transfer back scoring.
-  fScoring->CopyHitsToHost();
-  fScoring->fGlobalScoring.numKilled = inFlight;
+  //fScoring->CopyHitsToHost();
+  //fScoring->fGlobalScoring.numKilled = inFlight;
 }

@@ -89,8 +89,6 @@ void EMShowerModel::Initialize(bool adept)
   G4RunManager::RMType rmType = G4RunManager::GetRunManager()->GetRunManagerType();
   bool sequential             = (rmType == G4RunManager::sequentialRM);
 
-  fAdept->SetSensitiveVolumes(sensitive_volume_index);
-  fAdept->SetScoringMap(fScoringMap);
   fAdept->SetRegion(fRegion);
 
   auto tid = G4Threading::G4GetThreadId();

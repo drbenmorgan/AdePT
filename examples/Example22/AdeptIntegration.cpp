@@ -34,7 +34,7 @@ void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, doub
                                 double dirz)
 {
   // Should really be buffer that does this...
-  { 
+  {
     fBuffer.toDevice.emplace_back(pdg, energy, x, y, z, dirx, diry, dirz);
     if (pdg == 11)
       fBuffer.nelectrons++;
@@ -89,6 +89,7 @@ void AdeptIntegration::Shower(int event)
 
   // Copy device-side "hits" to host equivalents
   {
+    /*
     auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
     SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
 
@@ -96,12 +97,13 @@ void AdeptIntegration::Shower(int event)
       // here I add the energy deposition to the pre-existing Geant4 hit based on id
       fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
     }
+
     fScoring->ClearGPU();
+    */
   }
 
   fBuffer.Clear();
 }
-
 
 void AdeptIntegration::Initialize(bool common_data)
 {
@@ -149,7 +151,7 @@ void AdeptIntegration::Initialize(bool common_data)
          << G4endl;
 
   // Initialize user scoring data
-  fScoring     = new AdeptScoring(fNumSensitive);
+  fScoring     = new AdeptScoring();
   fScoring_dev = fScoring->InitializeOnGPU();
 
   // Initialize the transport engine for the current thread
@@ -243,26 +245,6 @@ adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume
       auxData[vol->id()].fGPUregion = 1;
       ninregion++;
     }
-
-    // Check if the logical volume is sensitive
-    bool sens = false;
-    for (auto sensvol : (*sensitive_volume_index)) {
-      if (vol->GetName() == sensvol.first || std::string(vol->GetName()).rfind(sensvol.first + "0x", 0) == 0) {
-        sens = true;
-        if (g4vol->GetSensitiveDetector() == nullptr)
-          throw std::runtime_error("Fatal: CreateVolAuxData: G4LogicalVolume " + std::string(g4vol->GetName()) +
-                                   " not sensitive while VecGeom one " + std::string(vol->GetName()) + " is.");
-        if (auxData[vol->id()].fSensIndex < 0) nlogical_sens++;
-        auxData[vol->id()].fSensIndex = sensvol.second;
-        fScoringMap->insert(std::pair<const G4VPhysicalVolume *, int>(g4pvol, pvol->id()));
-        nphysical_sens++;
-        break;
-      }
-    }
-
-    if (!sens && g4vol->GetSensitiveDetector() != nullptr)
-      throw std::runtime_error("Fatal: CreateVolAuxData: G4LogicalVolume " + std::string(g4vol->GetName()) +
-                               " sensitive while VecGeom one " + std::string(vol->GetName()) + " isn't.");
 
     // Now do the daughters
     for (int id = 0; id < nd; ++id) {

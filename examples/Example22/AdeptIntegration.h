@@ -80,9 +80,6 @@ public:
   /// @brief Interface for transporting a buffer of tracks in AdePT.
   void Shower(int event);
 
-  void SetSensitiveVolumes(std::unordered_map<std::string, int> *sv) { sensitive_volume_index = sv; }
-  void SetScoringMap(std::unordered_map<const G4VPhysicalVolume *, int> *sm) { fScoringMap = sm; }
-
   int GetNtoDevice() const { return fBuffer.toDevice.size(); }
   int GetNfromDevice() const { return fBuffer.fromDevice.size(); }
 
@@ -121,8 +118,6 @@ private:
   static G4HepEmState *fg4hepem_state; ///< The HepEm state singleton
   TrackBuffer fBuffer;                 ///< Vector of buffers of tracks to/from device (per thread)
   G4Region *fRegion{nullptr};          ///< Region to which applies
-  std::unordered_map<std::string, int> *sensitive_volume_index;    ///< Map of sensitive volumes
-  std::unordered_map<const G4VPhysicalVolume *, int> *fScoringMap; ///< Map used by G4 for scoring
 };
 
 #endif
