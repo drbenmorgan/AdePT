@@ -33,16 +33,7 @@ AdeptIntegration::~AdeptIntegration()
 void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry,
                                 double dirz)
 {
-  // Should really be buffer that does this...
-  {
-    fBuffer.toDevice.emplace_back(pdg, energy, x, y, z, dirx, diry, dirz);
-    if (pdg == 11)
-      fBuffer.nelectrons++;
-    else if (pdg == -11)
-      fBuffer.npositrons++;
-    else if (pdg == 22)
-      fBuffer.ngammas++;
-  }
+  fBuffer.AddTrack(pdg, energy, x, y, z, dirx, diry, dirz);
 
   if (fBuffer.toDevice.size() >= fBufferThreshold) {
     this->Shower(G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
@@ -57,12 +48,7 @@ void AdeptIntegration::Shower(int event)
     return;
   }
 
-  if (event != fBuffer.eventId) {
-    fBuffer.eventId    = event;
-    fBuffer.startTrack = 0;
-  } else {
-    fBuffer.startTrack += fBuffer.toDevice.size();
-  }
+  fBuffer.UpdateEventID(event);
 
   AdeptIntegration::ShowerGPU(event, fBuffer);
 
@@ -86,6 +72,7 @@ void AdeptIntegration::Shower(int event)
       G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
     }
   }
+  fBuffer.Clear();
 
   // Copy device-side "hits" to host equivalents
   {
@@ -101,8 +88,6 @@ void AdeptIntegration::Shower(int event)
     fScoring->ClearGPU();
     */
   }
-
-  fBuffer.Clear();
 }
 
 void AdeptIntegration::Initialize(bool common_data)
@@ -112,7 +97,7 @@ void AdeptIntegration::Initialize(bool common_data)
 
   fNumVolumes = vecgeom::GeoManager::Instance().GetRegisteredVolumesCount();
   // We set the number of sensitive volumes equal to the number of placed volumes. This is temporary
-  fNumSensitive = vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
+  //fNumSensitive = vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
   if (fNumVolumes == 0) throw std::runtime_error("AdeptIntegration::Initialize: Number of geometry volumes is zero.");
 
   if (common_data) {

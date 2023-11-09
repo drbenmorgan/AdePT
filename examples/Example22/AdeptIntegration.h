@@ -79,9 +79,6 @@ public:
   /// @brief Interface for transporting a buffer of tracks in AdePT.
   void Shower(int event);
 
-  int GetNtoDevice() const { return fBuffer.toDevice.size(); }
-  int GetNfromDevice() const { return fBuffer.fromDevice.size(); }
-
 private:
   using TrackBuffer = adeptint::TrackBuffer;
 
@@ -107,7 +104,6 @@ private:
   int fNthreads{0};                    ///< Number of cpu threads
   int fMaxBatch{0};                    ///< Max batch size for allocating GPU memory
   int fNumVolumes{0};                  ///< Total number of active logical volumes
-  int fNumSensitive{0};                ///< Total number of sensitive volumes
   int fBufferThreshold{20};            ///< Buffer threshold for flushing AdePT transport buffer
   int fDebugLevel{1};                  ///< Debug level
   GPUstate *fGPUstate{nullptr};        ///< CUDA state placeholder

@@ -38,6 +38,28 @@ struct TrackBuffer {
     fromDevice.clear();
     nelectrons = npositrons = ngammas = 0;
   }
+
+  void AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry, double dirz)
+  {
+    // Should really validate pdg here...
+    toDevice.emplace_back(pdg, energy, x, y, z, dirx, diry, dirz);
+    if (pdg == 11)
+      nelectrons++;
+    else if (pdg == -11)
+      npositrons++;
+    else if (pdg == 22)
+      ngammas++;
+  }
+
+  void UpdateEventID(int event)
+  {
+    if (event != eventId) {
+      eventId    = event;
+      startTrack = 0;
+    } else {
+      startTrack += toDevice.size();
+    }
+  }
 };
 
 } // end namespace adeptint
