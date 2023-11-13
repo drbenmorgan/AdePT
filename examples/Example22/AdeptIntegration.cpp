@@ -69,6 +69,20 @@ void AdeptIntegration::Shower(int event)
   */
 }
 
+bool AdeptIntegration::InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world)
+{
+  COPCORE_CUDA_CHECK(vecgeom::cxx::CudaDeviceSetStackLimit(8192));
+  // Upload geometry to GPU.
+  auto &cudaManager = vecgeom::cxx::CudaManager::Instance();
+  cudaManager.LoadGeometry(world);
+  auto world_dev = cudaManager.Synchronize();
+  // Initialize BVH (host side because of cxx/cuda namespacing?) 
+  vecgeom::cxx::BVHManager::Init();
+  vecgeom::cxx::BVHManager::DeviceInit();
+
+  return (world_dev != nullptr);
+}
+
 void AdeptIntegration::OnloadTracksToHost(const TrackBuffer &buf)
 {
   // Onload particles from AdePT back to Geant4 (e.g. leakage)
@@ -108,7 +122,7 @@ void AdeptIntegration::Initialize(bool common_data)
       throw std::runtime_error("AdeptIntegration::Initialize: VecGeom geometry not closed.");
 
     const vecgeom::cxx::VPlacedVolume *world = vecgeom::GeoManager::Instance().GetWorld();
-    if (!InitializeGeometry(world))
+    if (!AdeptIntegration::InitializeGeometry(world))
       throw std::runtime_error("AdeptIntegration::Initialize: Cannot initialize geometry on GPU");
 
     // Initialize G4HepEm
@@ -140,12 +154,6 @@ void AdeptIntegration::Initialize(bool common_data)
   InitializeGPU();
 
   fInit = true;
-}
-
-void AdeptIntegration::InitBVH()
-{
-  vecgeom::cxx::BVHManager::Init();
-  vecgeom::cxx::BVHManager::DeviceInit();
 }
 
 void AdeptIntegration::Cleanup()

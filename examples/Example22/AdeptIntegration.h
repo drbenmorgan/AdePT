@@ -84,11 +84,11 @@ private:
 
   VolAuxData *CreateVolAuxData(const G4VPhysicalVolume *g4world, const vecgeom::VPlacedVolume *world,
                                const G4HepEmState &hepEmState);
-  void InitBVH();
-  bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
   bool InitializePhysics();
   void InitializeGPU();
   void FreeGPU();
+  
+  static bool InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world);
 
   /// @brief Prepare the buffers for copying leaked tracks
   /// @param numLeaked Number of tracks to be copied

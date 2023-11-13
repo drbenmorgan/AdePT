@@ -5,6 +5,7 @@
 #include "AdeptIntegration.cuh"
 
 #include <VecGeom/base/Config.h>
+#include <VecGeom/management/BVHManager.h>
 #ifdef VECGEOM_ENABLE_CUDA
 #include <VecGeom/backend/cuda/Interface.h>
 #endif
@@ -185,19 +186,6 @@ __global__ void ClearLeakedQueues(LeakedTracks all)
   all.leakedElectrons->clear();
   all.leakedPositrons->clear();
   all.leakedGammas->clear();
-}
-
-bool AdeptIntegration::InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world)
-{
-  COPCORE_CUDA_CHECK(vecgeom::cxx::CudaDeviceSetStackLimit(8192));
-  // Upload geometry to GPU.
-  auto &cudaManager = vecgeom::cxx::CudaManager::Instance();
-  cudaManager.LoadGeometry(world);
-  auto world_dev = cudaManager.Synchronize();
-  // Initialize BVH
-  InitBVH();
-
-  return (world_dev != nullptr);
 }
 
 bool AdeptIntegration::InitializePhysics()
