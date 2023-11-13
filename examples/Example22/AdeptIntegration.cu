@@ -286,7 +286,7 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate& gpuSt
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
 
-  Secondaries secondaries{gpuState.allmgr_d.trackmgr[0], gpuState.allmgr_d.trackmgr[1], gpuState.allmgr_d.trackmgr[2]};
+  Secondaries secondaries = gpuState.MakeSecondariesViewDevice();
 
   ParticleType &electrons = gpuState.particles[ParticleType::Electron];
   ParticleType &positrons = gpuState.particles[ParticleType::Positron];

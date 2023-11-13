@@ -31,6 +31,7 @@ inline __device__ void G4HepEmRandomEngine::flatArray(const int size, double *ve
 #endif
 
 // A bundle of track managers for the three particle types.
+// It's a "view" of the managers held in GPUState's AllTrackManager instances 
 struct Secondaries {
   adept::TrackManager<Track> *electrons;
   adept::TrackManager<Track> *positrons;
@@ -82,6 +83,12 @@ struct GPUstate {
   TrackData *fromDevice_dev{nullptr}; ///< fromDevice buffer of tracks
   Stats *stats_dev{nullptr};          ///< statistics object pointer on device
   Stats *stats{nullptr};              ///< statistics object pointer on host
+
+  Secondaries MakeSecondariesViewDevice() const
+  {
+    return Secondaries{allmgr_d.trackmgr[ParticleType::Electron], allmgr_d.trackmgr[ParticleType::Positron], allmgr_d.trackmgr[ParticleType::Gamma]};
+  }
+
 };
 
 // Constant data structures from G4HepEm accessed by the kernels.
