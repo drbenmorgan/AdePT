@@ -96,6 +96,8 @@ private:
   
   static void ShowerGPU(int event, TrackBuffer &buffer, GPUstate& state); // const &buffer);
 
+  static void OnloadTracksToHost(const TrackBuffer& buffer);
+ 
 private:
   static constexpr int kMaxThreads = 256;
   // Track capacity

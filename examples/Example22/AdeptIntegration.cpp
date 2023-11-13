@@ -27,7 +27,7 @@
 
 AdeptIntegration::~AdeptIntegration()
 {
-  //delete fScoring;
+  // delete fScoring;
 }
 
 void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, double z, double dirx, double diry,
@@ -49,34 +49,13 @@ void AdeptIntegration::Shower(int event)
   }
 
   fBuffer.UpdateEventID(event);
-
   AdeptIntegration::ShowerGPU(event, fBuffer, *fGPUstate);
-
-  // Onload particles from AdePT back to Geant4 (e.g. leakage)
-  {
-    constexpr double tolerance = 10. * vecgeom::kTolerance;
-    for (auto const &track : fBuffer.fromDevice) {
-      G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
-
-      auto *dynamique =
-          new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
-
-      G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
-      // The returned track will be located by Geant4. For now we need to
-      // push it to make sure it is not relocated again in the GPU region
-      posi += tolerance * direction;
-
-      G4Track *secondary = new G4Track(dynamique, 0, posi);
-      secondary->SetParentID(-99);
-
-      G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
-    }
-  }
+  AdeptIntegration::OnloadTracksToHost(fBuffer);
   fBuffer.Clear();
 
+/*
   // Copy device-side "hits" to host equivalents
   {
-    /*
     auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
     SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
 
@@ -86,7 +65,29 @@ void AdeptIntegration::Shower(int event)
     }
 
     fScoring->ClearGPU();
-    */
+  }
+  */
+}
+
+void AdeptIntegration::OnloadTracksToHost(const TrackBuffer &buf)
+{
+  // Onload particles from AdePT back to Geant4 (e.g. leakage)
+  constexpr double tolerance = 10. * vecgeom::kTolerance;
+  for (auto const &track : buf.fromDevice) {
+    G4ParticleMomentum direction(track.direction[0], track.direction[1], track.direction[2]);
+
+    auto *dynamique =
+        new G4DynamicParticle(G4ParticleTable::GetParticleTable()->FindParticle(track.pdg), direction, track.energy);
+
+    G4ThreeVector posi(track.position[0], track.position[1], track.position[2]);
+    // The returned track will be located by Geant4. For now we need to
+    // push it to make sure it is not relocated again in the GPU region
+    posi += tolerance * direction;
+
+    G4Track *secondary = new G4Track(dynamique, 0, posi);
+    secondary->SetParentID(-99);
+
+    G4EventManager::GetEventManager()->GetStackManager()->PushOneTrack(secondary);
   }
 }
 
@@ -97,7 +98,7 @@ void AdeptIntegration::Initialize(bool common_data)
 
   fNumVolumes = vecgeom::GeoManager::Instance().GetRegisteredVolumesCount();
   // We set the number of sensitive volumes equal to the number of placed volumes. This is temporary
-  //fNumSensitive = vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
+  // fNumSensitive = vecgeom::GeoManager::Instance().GetPlacedVolumesCount();
   if (fNumVolumes == 0) throw std::runtime_error("AdeptIntegration::Initialize: Number of geometry volumes is zero.");
 
   if (common_data) {
