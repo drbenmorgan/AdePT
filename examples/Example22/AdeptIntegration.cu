@@ -39,15 +39,112 @@
 #include "electrons.cuh"
 #include "gammas.cuh"
 
+// ----- GLOBAL DATA
+// -- DEVICE
 __constant__ __device__ struct G4HepEmParameters g4HepEmPars;
 __constant__ __device__ struct G4HepEmData g4HepEmData;
 
 __constant__ __device__ adeptint::VolAuxData *gVolAuxData = nullptr;
 __constant__ __device__ double BzFieldValue               = 0;
 
+// ---- HOST
 G4HepEmState *AdeptIntegration::fg4hepem_state{nullptr};
 int AdeptIntegration::kCapacity = 1024 * 1024;
 
+// ----- KERNELS
+// Kernel function to initialize tracks comming from a Geant4 buffer
+__global__ void InitTracks(adeptint::TrackData *trackinfo, int ntracks, int startTrack, int event,
+                           Secondaries secondaries, const vecgeom::VPlacedVolume *world)
+{
+  constexpr double tolerance = 10. * vecgeom::kTolerance;
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < ntracks; i += blockDim.x * gridDim.x) {
+    adept::TrackManager<Track> *trackmgr = nullptr;
+    // These tracks come from Geant4, do not count them here
+    switch (trackinfo[i].pdg) {
+    case 11:
+      trackmgr = secondaries.electrons;
+      break;
+    case -11:
+      trackmgr = secondaries.positrons;
+      break;
+    case 22:
+      trackmgr = secondaries.gammas;
+    };
+    assert(trackmgr != nullptr && "Unsupported pdg type");
+
+    Track &track = trackmgr->NextTrack();
+    track.rngState.SetSeed(1234567 * event + startTrack + i);
+    track.energy       = trackinfo[i].energy;
+    track.numIALeft[0] = -1.0;
+    track.numIALeft[1] = -1.0;
+    track.numIALeft[2] = -1.0;
+
+    track.initialRange       = -1.0;
+    track.dynamicRangeFactor = -1.0;
+    track.tlimitMin          = -1.0;
+
+    track.pos = {trackinfo[i].position[0], trackinfo[i].position[1], trackinfo[i].position[2]};
+    track.dir = {trackinfo[i].direction[0], trackinfo[i].direction[1], trackinfo[i].direction[2]};
+    track.navState.Clear();
+    // We locate the pushed point because we run the risk that the
+    // point is not located in the GPU region
+    BVHNavigator::LocatePointIn(world, track.pos + tolerance * track.dir, track.navState, true);
+    // The track must be on boundary at this point
+    track.navState.SetBoundaryState(true);
+    // nextState is initialized as needed.
+    auto volume = track.navState.Top();
+    int lvolID  = volume->GetLogicalVolume()->id();
+    adeptint::VolAuxData const &auxData = gVolAuxData[lvolID];
+    assert(auxData.fGPUregion);
+  }
+}
+
+// Kernel to initialize the set of leaked queues per particle type.
+__global__ void InitLeakedQueues(AllTrackManagers allMgr, size_t Capacity)
+{
+  for (int i = 0; i < ParticleType::NumParticleTypes; i++)
+    MParrayTracks::MakeInstanceAt(Capacity, allMgr.leakedTracks[i]);
+}
+
+// Copy particles leaked from the GPU region into a compact buffer
+__global__ void FillFromDeviceBuffer(int numLeaked, LeakedTracks all, adeptint::TrackData *fromDevice)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= numLeaked) return;
+  int numElectrons = all.leakedElectrons->size();
+  int numPositrons = all.leakedPositrons->size();
+  int numGammas    = all.leakedGammas->size();
+  assert(numLeaked == numElectrons + numPositrons + numGammas);
+
+  if (i < numElectrons) {
+    fromDevice[i] = (*all.leakedElectrons)[i];
+  } else if (i < numElectrons + numPositrons) {
+    fromDevice[i] = (*all.leakedPositrons)[i - numElectrons];
+  } else {
+    fromDevice[i] = (*all.leakedGammas)[i - numElectrons - numPositrons];
+  }
+}
+
+// Finish iteration: refresh track managers and fill statistics on device side
+__global__ void FinishIteration(AllTrackManagers all, Stats *stats)
+{
+  for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
+    all.trackmgr[i]->refresh_stats();
+    stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
+    stats->leakedTracks[i] = all.leakedTracks[i]->size();
+  }
+}
+
+// Clear device leaked queues
+__global__ void ClearLeakedQueues(LeakedTracks all)
+{
+  all.leakedElectrons->clear();
+  all.leakedPositrons->clear();
+  all.leakedGammas->clear();
+}
+
+
+// ----- HOST FUNCTIONS
 void AdeptIntegration::VolAuxArray::InitializeOnGPU()
 {
   // Transfer volume auxiliary data
@@ -94,98 +191,6 @@ static G4HepEmState *InitG4HepEm()
   COPCORE_CUDA_CHECK(cudaMemcpyToSymbol(g4HepEmData, &dataOnDevice, sizeof(G4HepEmData)));
 
   return state;
-}
-
-// Kernel function to initialize tracks comming from a Geant4 buffer
-__global__ void InitTracks(adeptint::TrackData *trackinfo, int ntracks, int startTrack, int event,
-                           Secondaries secondaries, const vecgeom::VPlacedVolume *world)
-{
-  constexpr double tolerance = 10. * vecgeom::kTolerance;
-  for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < ntracks; i += blockDim.x * gridDim.x) {
-    adept::TrackManager<Track> *trackmgr = nullptr;
-    // These tracks come from Geant4, do not count them here
-    switch (trackinfo[i].pdg) {
-    case 11:
-      trackmgr = secondaries.electrons;
-      break;
-    case -11:
-      trackmgr = secondaries.positrons;
-      break;
-    case 22:
-      trackmgr = secondaries.gammas;
-    };
-    assert(trackmgr != nullptr && "Unsupported pdg type");
-
-    Track &track = trackmgr->NextTrack();
-    track.rngState.SetSeed(1234567 * event + startTrack + i);
-    track.energy       = trackinfo[i].energy;
-    track.numIALeft[0] = -1.0;
-    track.numIALeft[1] = -1.0;
-    track.numIALeft[2] = -1.0;
-
-    track.initialRange       = -1.0;
-    track.dynamicRangeFactor = -1.0;
-    track.tlimitMin          = -1.0;
-
-    track.pos = {trackinfo[i].position[0], trackinfo[i].position[1], trackinfo[i].position[2]};
-    track.dir = {trackinfo[i].direction[0], trackinfo[i].direction[1], trackinfo[i].direction[2]};
-    track.navState.Clear();
-    // We locate the pushed point because we run the risk that the
-    // point is not located in the GPU region
-    BVHNavigator::LocatePointIn(world, track.pos + tolerance * track.dir, track.navState, true);
-    // The track must be on boundary at this point
-    track.navState.SetBoundaryState(true);
-    // nextState is initialized as needed.
-    auto volume = track.navState.Top();
-    int lvolID  = volume->GetLogicalVolume()->id();
-    // adeptint::VolAuxData const &auxData = userScoring->GetAuxData_dev(lvolID);
-    adeptint::VolAuxData const &auxData = gVolAuxData[lvolID];
-    assert(auxData.fGPUregion);
-  }
-}
-
-// Kernel to initialize the set of leaked queues per particle type.
-__global__ void InitLeakedQueues(AllTrackManagers allMgr, size_t Capacity)
-{
-  for (int i = 0; i < ParticleType::NumParticleTypes; i++)
-    MParrayTracks::MakeInstanceAt(Capacity, allMgr.leakedTracks[i]);
-}
-
-// Copy particles leaked from the GPU region into a compact buffer
-__global__ void FillFromDeviceBuffer(int numLeaked, LeakedTracks all, adeptint::TrackData *fromDevice)
-{
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= numLeaked) return;
-  int numElectrons = all.leakedElectrons->size();
-  int numPositrons = all.leakedPositrons->size();
-  int numGammas    = all.leakedGammas->size();
-  assert(numLeaked == numElectrons + numPositrons + numGammas);
-
-  if (i < numElectrons) {
-    fromDevice[i] = (*all.leakedElectrons)[i];
-  } else if (i < numElectrons + numPositrons) {
-    fromDevice[i] = (*all.leakedPositrons)[i - numElectrons];
-  } else {
-    fromDevice[i] = (*all.leakedGammas)[i - numElectrons - numPositrons];
-  }
-}
-
-// Finish iteration: refresh track managers and fill statistics.
-__global__ void FinishIteration(AllTrackManagers all, Stats *stats)
-{
-  for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
-    all.trackmgr[i]->refresh_stats();
-    stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
-    stats->leakedTracks[i] = all.leakedTracks[i]->size();
-  }
-}
-
-// Clear device leaked queues
-__global__ void ClearLeakedQueues(LeakedTracks all)
-{
-  all.leakedElectrons->clear();
-  all.leakedPositrons->clear();
-  all.leakedGammas->clear();
 }
 
 bool AdeptIntegration::InitializePhysics()
@@ -290,36 +295,44 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
 
-  // These are, awkwardly, control numbers...
-  {
-    gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
-    gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
-    gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
-  }
-
   Secondaries secondaries = gpuState.MakeSecondariesViewDevice();
 
-  // copy buffer of tracks to device
-  COPCORE_CUDA_CHECK(cudaMemcpyAsync(gpuState.toDevice_dev, buffer.toDevice.data(),
-                                     buffer.toDevice.size() * sizeof(adeptint::TrackData), cudaMemcpyHostToDevice,
-                                     gpuState.stream));
+  // ----- This is all one operation
+  // - Copy host track data to device-side buffer
+  // - Initialize tracks into their PDG-specific TrackManagers
+  // - **Manually** update the number in flight of ecach track manager
+  {
+    // copy buffer of tracks to device
+    COPCORE_CUDA_CHECK(cudaMemcpyAsync(gpuState.toDevice_dev, buffer.toDevice.data(),
+                                       buffer.toDevice.size() * sizeof(adeptint::TrackData), cudaMemcpyHostToDevice,
+                                       gpuState.stream));
 
-  // Initialize AdePT tracks using the track buffer copied from CPU
-  constexpr int initThreads = 32;
-  int initBlocks            = (buffer.toDevice.size() + initThreads - 1) / initThreads;
+    // Initialize AdePT tracks using the track buffer copied from CPU
+    constexpr int initThreads = 32;
+    int initBlocks            = (buffer.toDevice.size() + initThreads - 1) / initThreads;
 
-  InitTracks<<<initBlocks, initThreads, 0, gpuState.stream>>>(gpuState.toDevice_dev, buffer.toDevice.size(),
-                                                              buffer.startTrack, event, secondaries, world_dev);
+    InitTracks<<<initBlocks, initThreads, 0, gpuState.stream>>>(gpuState.toDevice_dev, buffer.toDevice.size(),
+                                                                buffer.startTrack, event, secondaries, world_dev);
 
-  COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
+    COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
+    // These are, awkwardly, control numbers for the track manager(s) and have to be updated manually...
+    // Though it's not clear exactly how critical they are. It may be better to use the TrackManager's refresh stats
+    // and then a finish iteration to actually copy back. Note that the below is just the host side and this
+    // doesn't appear to be used by the track manager itself (rather, just bookeeeping for the following transport steps)
+    {
+      gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
+      gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
+      gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
+    }
+  }
 
   // ----- TRANSPORT LOOP
   constexpr float compactThreshold = 0.9;
 
   auto getKernelParameters = [](int numParticles) {
-    constexpr int TransportThreads   = 32;
-    constexpr int MaxBlocks = 1024;
-    int transportBlocks     = (numParticles + TransportThreads - 1) / TransportThreads;
+    constexpr int TransportThreads = 32;
+    constexpr int MaxBlocks        = 1024;
+    int transportBlocks            = (numParticles + TransportThreads - 1) / TransportThreads;
     return std::pair{std::min(transportBlocks, MaxBlocks), TransportThreads};
   };
 
@@ -362,8 +375,8 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     int numGammas = gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight;
     if (numGammas > 0) {
       auto [blocks, threads] = getKernelParameters(numGammas);
-      TransportGammas<<<blocks, threads, 0, gammas.stream>>>(
-          gammas.trackmgr, secondaries, gammas.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev);
+      TransportGammas<<<blocks, threads, 0, gammas.stream>>>(gammas.trackmgr, secondaries, gammas.leakedTracks,
+                                                             VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(gammas.event, gammas.stream));
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, gammas.event, 0));
@@ -374,13 +387,14 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     // ----- POST STEP TASKS
     // The events ensure synchronization before finishing this iteration and
     // copying the Stats back to the host.
-    FinishIteration<<<1, 1, 0, gpuState.stream>>>(gpuState.allmgr_d, gpuState.stats_dev);
-    COPCORE_CUDA_CHECK(
-        cudaMemcpyAsync(gpuState.stats, gpuState.stats_dev, sizeof(Stats), cudaMemcpyDeviceToHost, gpuState.stream));
+    {
+      FinishIteration<<<1, 1, 0, gpuState.stream>>>(gpuState.allmgr_d, gpuState.stats_dev);
+      COPCORE_CUDA_CHECK(
+          cudaMemcpyAsync(gpuState.stats, gpuState.stats_dev, sizeof(Stats), cudaMemcpyDeviceToHost, gpuState.stream));
 
-    // Finally synchronize all kernels.
-    COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
-
+      // Finally synchronize all kernels.
+      COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
+    }
     // Count the number of particles in flight.
     inFlight  = 0;
     numLeaked = 0;

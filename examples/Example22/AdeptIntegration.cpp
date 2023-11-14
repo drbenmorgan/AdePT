@@ -35,6 +35,7 @@ void AdeptIntegration::AddTrack(int pdg, double energy, double x, double y, doub
 {
   fBuffer.AddTrack(pdg, energy, x, y, z, dirx, diry, dirz);
 
+  // NB: There's a coupling between the fBufferThreshold and fMaxBatch, as the later must be >= the former.
   if (fBuffer.toDevice.size() >= fBufferThreshold) {
     this->Shower(G4EventManager::GetEventManager()->GetConstCurrentEvent()->GetEventID());
   }
@@ -52,21 +53,7 @@ void AdeptIntegration::Shower(int event)
   AdeptIntegration::ShowerGPU(event, fBuffer, *fGPUstate);
   AdeptIntegration::OnloadTracksToHost(fBuffer);
   fBuffer.Clear();
-
-/*
-  // Copy device-side "hits" to host equivalents
-  {
-    auto *sd                            = G4SDManager::GetSDMpointer()->FindSensitiveDetector("AdePTDetector");
-    SensitiveDetector *fastSimSensitive = dynamic_cast<SensitiveDetector *>(sd);
-
-    for (auto id = 0; id != fNumSensitive; id++) {
-      // here I add the energy deposition to the pre-existing Geant4 hit based on id
-      fastSimSensitive->ProcessHits(id, fScoring->fScoringPerVolume.energyDeposit[id] / copcore::units::MeV);
-    }
-
-    fScoring->ClearGPU();
-  }
-  */
+  // Copy back of hits likely here
 }
 
 bool AdeptIntegration::InitializeGeometry(const vecgeom::cxx::VPlacedVolume *world)
