@@ -232,12 +232,12 @@ void AdeptIntegration::InitializeGPU()
   COPCORE_CUDA_CHECK(cudaStreamCreate(&gpuState.stream));
 
   for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
-    gpuState.allmgr_h.trackmgr[i]  = new adept::TrackManager<Track>(kCapacity);
-    gpuState.allmgr_d.trackmgr[i]  = gpuState.allmgr_h.trackmgr[i]->ConstructOnDevice();
-    gpuState.particles[i].trackmgr = gpuState.allmgr_d.trackmgr[i];
+    gpuState.allmgr_h.trackmgr[i] = new adept::TrackManager<Track>(kCapacity);
+    gpuState.allmgr_d.trackmgr[i] = gpuState.allmgr_h.trackmgr[i]->ConstructOnDevice();
     COPCORE_CUDA_CHECK(cudaMalloc(&gpuState.allmgr_d.leakedTracks[i], QueueSize));
-    gpuState.particles[i].leakedTracks = gpuState.allmgr_d.leakedTracks[i];
 
+    gpuState.particles[i].trackmgr     = gpuState.allmgr_d.trackmgr[i];
+    gpuState.particles[i].leakedTracks = gpuState.allmgr_d.leakedTracks[i];
     COPCORE_CUDA_CHECK(cudaStreamCreate(&gpuState.particles[i].stream));
     COPCORE_CUDA_CHECK(cudaEventCreate(&gpuState.particles[i].event));
   }
@@ -259,10 +259,10 @@ void AdeptIntegration::FreeGPU()
   GPUstate &gpuState = *static_cast<GPUstate *>(fGPUstate);
   COPCORE_CUDA_CHECK(cudaFree(gpuState.stats_dev));
   COPCORE_CUDA_CHECK(cudaFreeHost(gpuState.stats));
-  COPCORE_CUDA_CHECK(cudaFree(gpuState.toDevice_dev));
 
+  COPCORE_CUDA_CHECK(cudaFree(gpuState.toDevice_dev));
   COPCORE_CUDA_CHECK(cudaFree(gpuState.fromDevice_dev));
-  delete [] gpuState.fromDevice_host;
+  delete[] gpuState.fromDevice_host;
   gpuState.buffSize = 0;
 
   COPCORE_CUDA_CHECK(cudaStreamDestroy(gpuState.stream));
@@ -270,7 +270,7 @@ void AdeptIntegration::FreeGPU()
   for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
     gpuState.allmgr_h.trackmgr[i]->FreeFromDevice();
     delete gpuState.allmgr_h.trackmgr[i];
-    COPCORE_CUDA_CHECK(cudaFree(gpuState.particles[i].leakedTracks));
+    COPCORE_CUDA_CHECK(cudaFree(gpuState.allmgr_d.leakedTracks[i]));
 
     COPCORE_CUDA_CHECK(cudaStreamDestroy(gpuState.particles[i].stream));
     COPCORE_CUDA_CHECK(cudaEventDestroy(gpuState.particles[i].event));
@@ -285,15 +285,19 @@ void AdeptIntegration::FreeGPU()
 void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuState) // const &buffer)
 {
   using TrackData = adeptint::TrackData;
+  // ----- INITIALIZATION
   // Capacity of the different containers aka the maximum number of particles.
   auto &cudaManager                             = vecgeom::cxx::CudaManager::Instance();
   const vecgeom::cuda::VPlacedVolume *world_dev = cudaManager.world_gpu();
 
-  Secondaries secondaries = gpuState.MakeSecondariesViewDevice();
+  // These are, awkwardly, control numbers...
+  {
+    gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
+    gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
+    gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
+  }
 
-  ParticleType &electrons = gpuState.particles[ParticleType::Electron];
-  ParticleType &positrons = gpuState.particles[ParticleType::Positron];
-  ParticleType &gammas    = gpuState.particles[ParticleType::Gamma];
+  Secondaries secondaries = gpuState.MakeSecondariesViewDevice();
 
   // copy buffer of tracks to device
   COPCORE_CUDA_CHECK(cudaMemcpyAsync(gpuState.toDevice_dev, buffer.toDevice.data(),
@@ -309,62 +313,56 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
 
   COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 
-  // Diagnostics or control?
-  {
-    gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
-    gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
-    gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight    = buffer.ngammas;
-  }
-
+  // ----- TRANSPORT LOOP
   constexpr float compactThreshold = 0.9;
-  constexpr int MaxBlocks          = 1024;
-  constexpr int TransportThreads   = 32;
-  int transportBlocks;
+
+  auto getKernelParameters = [](int numParticles) {
+    constexpr int TransportThreads   = 32;
+    constexpr int MaxBlocks = 1024;
+    int transportBlocks     = (numParticles + TransportThreads - 1) / TransportThreads;
+    return std::pair{std::min(transportBlocks, MaxBlocks), TransportThreads};
+  };
 
   int inFlight          = 0;
-  int killed            = 0;
   int numLeaked         = 0;
-  int num_compact       = 0;
   int loopingNo         = 0;
-  int previousElectrons = -1, previousPositrons = -1;
-  LeakedTracks leakedTracks = {.leakedElectrons = electrons.leakedTracks,
-                               .leakedPositrons = positrons.leakedTracks,
-                               .leakedGammas    = gammas.leakedTracks};
+  int previousElectrons = -1;
+  int previousPositrons = -1;
+
+  ParticleType &electrons = gpuState.particles[ParticleType::Electron];
+  ParticleType &positrons = gpuState.particles[ParticleType::Positron];
+  ParticleType &gammas    = gpuState.particles[ParticleType::Gamma];
+
+  LeakedTracks leakedTracks = {electrons.leakedTracks, positrons.leakedTracks, gammas.leakedTracks};
 
   do {
-    // *** ELECTRONS ***
+    // *** 1 STEP OF ALL ELECTRONS ***
     int numElectrons = gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight;
     if (numElectrons > 0) {
-      transportBlocks = (numElectrons + TransportThreads - 1) / TransportThreads;
-      transportBlocks = std::min(transportBlocks, MaxBlocks);
-
-      TransportElectrons<<<transportBlocks, TransportThreads, 0, electrons.stream>>>(
+      auto [blocks, threads] = getKernelParameters(numElectrons);
+      TransportElectrons<<<blocks, threads, 0, electrons.stream>>>(
           electrons.trackmgr, secondaries, electrons.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(electrons.event, electrons.stream));
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, electrons.event, 0));
     }
 
-    // *** POSITRONS ***
+    // *** 1 STEP OF ALL POSITRONS ***
     int numPositrons = gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight;
     if (numPositrons > 0) {
-      transportBlocks = (numPositrons + TransportThreads - 1) / TransportThreads;
-      transportBlocks = std::min(transportBlocks, MaxBlocks);
-
-      TransportPositrons<<<transportBlocks, TransportThreads, 0, positrons.stream>>>(
+      auto [blocks, threads] = getKernelParameters(numPositrons);
+      TransportPositrons<<<blocks, threads, 0, positrons.stream>>>(
           positrons.trackmgr, secondaries, positrons.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(positrons.event, positrons.stream));
       COPCORE_CUDA_CHECK(cudaStreamWaitEvent(gpuState.stream, positrons.event, 0));
     }
 
-    // *** GAMMAS ***
+    // *** 1 STEP OF ALL GAMMAS ***
     int numGammas = gpuState.allmgr_h.trackmgr[ParticleType::Gamma]->fStats.fInFlight;
     if (numGammas > 0) {
-      transportBlocks = (numGammas + TransportThreads - 1) / TransportThreads;
-      transportBlocks = std::min(transportBlocks, MaxBlocks);
-
-      TransportGammas<<<transportBlocks, TransportThreads, 0, gammas.stream>>>(
+      auto [blocks, threads] = getKernelParameters(numGammas);
+      TransportGammas<<<blocks, threads, 0, gammas.stream>>>(
           gammas.trackmgr, secondaries, gammas.leakedTracks, VolAuxArray::GetInstance().fAuxData_dev);
 
       COPCORE_CUDA_CHECK(cudaEventRecord(gammas.event, gammas.stream));
@@ -373,6 +371,7 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
 
     // *** END OF TRANSPORT ***
 
+    // ----- POST STEP TASKS
     // The events ensure synchronization before finishing this iteration and
     // copying the Stats back to the host.
     FinishIteration<<<1, 1, 0, gpuState.stream>>>(gpuState.allmgr_d, gpuState.stats_dev);
@@ -392,7 +391,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
       numLeaked += gpuState.stats->leakedTracks[i];
       // Compact the particle track buffer if needed
       auto compacted = gpuState.allmgr_h.trackmgr[i]->SwapAndCompact(compactThreshold, gpuState.particles[i].stream);
-      if (compacted) num_compact++;
     }
 
     // Check if only charged particles are left that are looping.
@@ -409,6 +407,7 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
 
   } while (inFlight > 0 && loopingNo < 200);
 
+  // ----- POST TRANSPORT
   // Transfer the leaked tracks from GPU
   if (numLeaked) {
     auto copyLeakedTracksFromGPU = [&](int numLeaked) {
@@ -435,7 +434,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
   }
 
   if (inFlight > 0) {
-    killed += inFlight;
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
       int inFlightParticles = gpuState.allmgr_h.trackmgr[i]->fStats.fInFlight;
       if (inFlightParticles == 0) {
@@ -449,8 +447,4 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
 
   ClearLeakedQueues<<<1, 1, 0, gpuState.stream>>>(leakedTracks);
   COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
-
-  // Transfer back scoring.
-  // fScoring->CopyHitsToHost();
-  // fScoring->fGlobalScoring.numKilled = inFlight;
 }
