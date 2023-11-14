@@ -160,7 +160,6 @@ void AdeptIntegration::Cleanup()
 {
   if (!fInit) return;
   AdeptIntegration::FreeGPU();
-  delete[] fBuffer.fromDeviceBuff;
 }
 
 adeptint::VolAuxData *AdeptIntegration::CreateVolAuxData(const G4VPhysicalVolume *g4world,

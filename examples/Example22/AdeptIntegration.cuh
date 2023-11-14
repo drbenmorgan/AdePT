@@ -80,7 +80,9 @@ struct GPUstate {
   // Create a stream to synchronize kernels of all particle types.
   cudaStream_t stream;                ///< all-particle sync stream
   TrackData *toDevice_dev{nullptr};   ///< toDevice buffer of tracks
-  TrackData *fromDevice_dev{nullptr}; ///< fromDevice buffer of tracks
+  int buffSize{0};
+  TrackData *fromDevice_dev{nullptr}; ///< fromDevice buffer of tracks (device)
+  TrackData *fromDevice_host{nullptr}; ///< fromDevice buffer of tracks (host)
   Stats *stats_dev{nullptr};          ///< statistics object pointer on device
   Stats *stats{nullptr};              ///< statistics object pointer on host
 

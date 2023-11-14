@@ -24,8 +24,6 @@ struct VolAuxData {
 struct TrackBuffer {
   std::vector<TrackData> toDevice;    ///< Tracks to be transported on the device
   std::vector<TrackData> fromDevice;  ///< Tracks coming from device to be transported on the CPU
-  TrackData *fromDeviceBuff{nullptr}; ///< Buffer of leaked tracks from device
-  int buffSize{0};                    ///< Size of buffer collecting tracks from device
   int eventId{-1};                    ///< Index of current transported event
   int startTrack{0};                  ///< Track counter for the current event
   int nelectrons{0};                  ///< Number of electrons in the input buffer

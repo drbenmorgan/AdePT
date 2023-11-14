@@ -92,7 +92,7 @@ private:
 
   /// @brief Prepare the buffers for copying leaked tracks
   /// @param numLeaked Number of tracks to be copied
-  static void PrepareLeakedBuffers(int numLeaked, GPUstate& devState, TrackBuffer& hostBuffer);
+  static void PrepareLeakedBuffers(int numLeaked, GPUstate& devState);
   
   static void ShowerGPU(int event, TrackBuffer &buffer, GPUstate& state); // const &buffer);
 
