@@ -31,7 +31,7 @@ inline __device__ void G4HepEmRandomEngine::flatArray(const int size, double *ve
 #endif
 
 // A bundle of track managers for the three particle types.
-// It's a "view" of the managers held in GPUState's AllTrackManager instances 
+// It's a "view" of the managers held in GPUState's AllTrackManager instances
 struct Secondaries {
   adept::TrackManager<Track> *electrons;
   adept::TrackManager<Track> *positrons;
@@ -75,29 +75,37 @@ struct GPUstate {
   using TrackData = adeptint::TrackData;
 
   ParticleType particles[ParticleType::NumParticleTypes];
-  AllTrackManagers allmgr_h;          ///< Host pointers for track managers
-  AllTrackManagers allmgr_d;          ///< Device pointers for track managers
+  AllTrackManagers allmgr_h; ///< Host pointers for track managers
+  AllTrackManagers allmgr_d; ///< Device pointers for track managers
   // Create a stream to synchronize kernels of all particle types.
-  cudaStream_t stream;                ///< all-particle sync stream
-  TrackData *toDevice_dev{nullptr};   ///< toDevice buffer of tracks
+  cudaStream_t stream;              ///< all-particle sync stream
+  TrackData *toDevice_dev{nullptr}; ///< toDevice buffer of tracks
   int buffSize{0};
-  TrackData *fromDevice_dev{nullptr}; ///< fromDevice buffer of tracks (device)
+  TrackData *fromDevice_dev{nullptr};  ///< fromDevice buffer of tracks (device)
   TrackData *fromDevice_host{nullptr}; ///< fromDevice buffer of tracks (host)
-  Stats *stats_dev{nullptr};          ///< statistics object pointer on device
-  Stats *stats{nullptr};              ///< statistics object pointer on host
+  Stats *stats_dev{nullptr};           ///< statistics object pointer on device
+  Stats *stats{nullptr};               ///< statistics object pointer on host
 
   Secondaries MakeSecondariesViewDevice() const
   {
-    return Secondaries{allmgr_d.trackmgr[ParticleType::Electron], allmgr_d.trackmgr[ParticleType::Positron], allmgr_d.trackmgr[ParticleType::Gamma]};
+    return Secondaries{allmgr_d.trackmgr[ParticleType::Electron], allmgr_d.trackmgr[ParticleType::Positron],
+                       allmgr_d.trackmgr[ParticleType::Gamma]};
+  }
+
+  // Only ever returns a struct of device pointers
+  LeakedTracks MakeLeakedTrackViewDevice() const
+  {
+    return LeakedTracks{allmgr_d.leakedTracks[ParticleType::Electron], allmgr_d.leakedTracks[ParticleType::Positron],
+                        allmgr_d.leakedTracks[ParticleType::Gamma]};
   }
 
   int GetNumberOfLeakedTracks() const
   {
     int total = 0;
-    for(auto i : stats->leakedTracks) total += i;
+    for (auto i : stats->leakedTracks)
+      total += i;
     return total;
   }
-
 };
 
 // Constant data structures from G4HepEm accessed by the kernels.

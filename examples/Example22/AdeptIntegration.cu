@@ -125,6 +125,15 @@ __global__ void FillFromDeviceBuffer(int numLeaked, LeakedTracks all, adeptint::
   }
 }
 
+// Clear device leaked queues
+__global__ void ClearLeakedQueues(LeakedTracks all)
+{
+  all.leakedElectrons->clear();
+  all.leakedPositrons->clear();
+  all.leakedGammas->clear();
+}
+
+
 // Finish iteration: refresh track managers and fill statistics on device side
 __global__ void FinishIteration(AllTrackManagers all, Stats *stats)
 {
@@ -133,14 +142,6 @@ __global__ void FinishIteration(AllTrackManagers all, Stats *stats)
     stats->mgr_stats[i]    = all.trackmgr[i]->fStats;
     stats->leakedTracks[i] = all.leakedTracks[i]->size();
   }
-}
-
-// Clear device leaked queues
-__global__ void ClearLeakedQueues(LeakedTracks all)
-{
-  all.leakedElectrons->clear();
-  all.leakedPositrons->clear();
-  all.leakedGammas->clear();
 }
 
 // ----- HOST FUNCTIONS
@@ -345,7 +346,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
   ParticleType &positrons = gpuState.particles[ParticleType::Positron];
   ParticleType &gammas    = gpuState.particles[ParticleType::Gamma];
 
-  LeakedTracks leakedTracks = {electrons.leakedTracks, positrons.leakedTracks, gammas.leakedTracks};
 
   do {
     // *** 1 STEP OF ALL ELECTRONS ***
@@ -396,8 +396,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     }
 
     // Count the number of particles in flight.
-    // NB: Strictly only inflight calculation is needed, numleaked can be calculated outside transport loop
-    // NB: inFlight is used later as well
     inFlight = 0;
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
       // Update stats for host track manager objects
@@ -424,11 +422,11 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
   // ----- POST TRANSPORT
   // Transfer the leaked tracks from GPU
   int numLeaked = gpuState.GetNumberOfLeakedTracks();
+  LeakedTracks leakedTracks = gpuState.MakeLeakedTrackViewDevice();
   if (numLeaked) {
     auto copyLeakedTracksFromGPU = [&](int numLeaked) {
       PrepareLeakedBuffers(numLeaked, gpuState);
       buffer.fromDevice.reserve(numLeaked);
-
       // Populate the buffer from sparse memory
       constexpr unsigned int block_size = 256;
       unsigned int grid_size            = (numLeaked + block_size - 1) / block_size;
@@ -447,8 +445,12 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     // Sort by energy the tracks coming from device to ensure reproducibility
     std::sort(buffer.fromDevice.begin(), buffer.fromDevice.end());
   }
+  ClearLeakedQueues<<<1, 1, 0, gpuState.stream>>>(leakedTracks);
+  COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
+
 
   // Cleanup
+  // NB: note that stats are modified here, but we don't update on the host
   if (inFlight > 0) {
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
       int inFlightParticles = gpuState.allmgr_h.trackmgr[i]->fStats.fInFlight;
@@ -460,7 +462,4 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     }
     COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
   }
-
-  ClearLeakedQueues<<<1, 1, 0, gpuState.stream>>>(leakedTracks);
-  COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
 }
