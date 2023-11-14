@@ -92,8 +92,8 @@ __global__ void InitTracks(adeptint::TrackData *trackinfo, int ntracks, int star
     // The track must be on boundary at this point
     track.navState.SetBoundaryState(true);
     // nextState is initialized as needed.
-    auto volume = track.navState.Top();
-    int lvolID  = volume->GetLogicalVolume()->id();
+    auto volume                         = track.navState.Top();
+    int lvolID                          = volume->GetLogicalVolume()->id();
     adeptint::VolAuxData const &auxData = gVolAuxData[lvolID];
     assert(auxData.fGPUregion);
   }
@@ -142,7 +142,6 @@ __global__ void ClearLeakedQueues(LeakedTracks all)
   all.leakedPositrons->clear();
   all.leakedGammas->clear();
 }
-
 
 // ----- HOST FUNCTIONS
 void AdeptIntegration::VolAuxArray::InitializeOnGPU()
@@ -318,7 +317,8 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     // These are, awkwardly, control numbers for the track manager(s) and have to be updated manually...
     // Though it's not clear exactly how critical they are. It may be better to use the TrackManager's refresh stats
     // and then a finish iteration to actually copy back. Note that the below is just the host side and this
-    // doesn't appear to be used by the track manager itself (rather, just bookeeeping for the following transport steps)
+    // doesn't appear to be used by the track manager itself (rather, just bookeeeping for the following transport
+    // steps)
     {
       gpuState.allmgr_h.trackmgr[ParticleType::Electron]->fStats.fInFlight = buffer.nelectrons;
       gpuState.allmgr_h.trackmgr[ParticleType::Positron]->fStats.fInFlight = buffer.npositrons;
@@ -337,7 +337,6 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
   };
 
   int inFlight          = 0;
-  int numLeaked         = 0;
   int loopingNo         = 0;
   int previousElectrons = -1;
   int previousPositrons = -1;
@@ -395,14 +394,15 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
       // Finally synchronize all kernels.
       COPCORE_CUDA_CHECK(cudaStreamSynchronize(gpuState.stream));
     }
+
     // Count the number of particles in flight.
-    inFlight  = 0;
-    numLeaked = 0;
+    // NB: Strictly only inflight calculation is needed, numleaked can be calculated outside transport loop
+    // NB: inFlight is used later as well
+    inFlight = 0;
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
       // Update stats for host track manager objects
       gpuState.allmgr_h.trackmgr[i]->fStats = gpuState.stats->mgr_stats[i];
       inFlight += gpuState.stats->mgr_stats[i].fInFlight;
-      numLeaked += gpuState.stats->leakedTracks[i];
       // Compact the particle track buffer if needed
       auto compacted = gpuState.allmgr_h.trackmgr[i]->SwapAndCompact(compactThreshold, gpuState.particles[i].stream);
     }
@@ -423,6 +423,7 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
 
   // ----- POST TRANSPORT
   // Transfer the leaked tracks from GPU
+  int numLeaked = gpuState.GetNumberOfLeakedTracks();
   if (numLeaked) {
     auto copyLeakedTracksFromGPU = [&](int numLeaked) {
       PrepareLeakedBuffers(numLeaked, gpuState);
@@ -447,6 +448,7 @@ void AdeptIntegration::ShowerGPU(int event, TrackBuffer &buffer, GPUstate &gpuSt
     std::sort(buffer.fromDevice.begin(), buffer.fromDevice.end());
   }
 
+  // Cleanup
   if (inFlight > 0) {
     for (int i = 0; i < ParticleType::NumParticleTypes; i++) {
       int inFlightParticles = gpuState.allmgr_h.trackmgr[i]->fStats.fInFlight;

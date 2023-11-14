@@ -91,6 +91,13 @@ struct GPUstate {
     return Secondaries{allmgr_d.trackmgr[ParticleType::Electron], allmgr_d.trackmgr[ParticleType::Positron], allmgr_d.trackmgr[ParticleType::Gamma]};
   }
 
+  int GetNumberOfLeakedTracks() const
+  {
+    int total = 0;
+    for(auto i : stats->leakedTracks) total += i;
+    return total;
+  }
+
 };
 
 // Constant data structures from G4HepEm accessed by the kernels.
