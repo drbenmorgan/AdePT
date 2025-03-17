@@ -252,7 +252,7 @@ target_include_directories(CopCore
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/>
 )
 
-add_library(AdePT_G4_integration SHARED
+add_library(AdePT_G4_integration STATIC
   ${ADEPT_G4_INTEGRATION_SRCS}
 )
 target_include_directories(AdePT_G4_integration
@@ -287,7 +287,6 @@ endif()
 set_target_properties(AdePT_G4_integration
   PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON
 )
 
 option(ASYNC_MODE OFF "Enable the async transport backend")
