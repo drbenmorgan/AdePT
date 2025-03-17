@@ -273,7 +273,7 @@ target_link_libraries(AdePT_G4_integration
     G4HepEm::g4HepEmInit
     G4HepEm::g4HepEmRun
     G4VG::g4vg
-    CUDA::cudart
+    CUDA::cudart_static
 )
 if(ADEPT_USE_EXT_BFIELD)
   # link covfie if external magnetic field usage is enabled
